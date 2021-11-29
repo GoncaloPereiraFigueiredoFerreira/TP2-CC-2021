@@ -151,13 +151,14 @@ public class FTrapid {
      * Intrepreta pacotes de DATA
      *
      */
-    //simple Entry
-    public AbstractMap.SimpleEntry<Short,byte[]> readDataPacket(byte[] data){
+    public DataPackageInfo readDataPacket(byte[] data){
         ByteBuffer out = ByteBuffer.allocate(MAXDATA);
         out.put(data,0,data.length);
         out.position(0);
         byte opcode = out.get();
         byte[] msg=null;
+        DataPackageInfo par = null;
+
         if (opcode == 3){
         //System.out.println("opcode: "+opcode);
         short block = out.getShort();               //need this to get out
@@ -167,7 +168,7 @@ public class FTrapid {
         ByteBuffer tmp = ByteBuffer.allocate(length);
         tmp.put(out);
         msg=tmp.array();
-        AbstractMap.SimpleEntry<Short,byte[]> par = new AbstractMap.SimpleEntry<>(block,msg);
+        par = new DataPackageInfo(block,msg);
         //String s = new String(msg,StandardCharsets.UTF_8);
         //System.out.println(s);
         }
