@@ -1,12 +1,18 @@
-import java.net.InetAddress;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 
-public class ftprapid {
+public class ftrapid {
 
     //Maybe
-    // private DatagramSocket dS;
+    private DatagramSocket dS;
+    private final int MAXRDWRSIZE=514; // n sei
+    private final int MAXDATASIZE=514;
+    private final int MAXACKSIZE=3;
+    private final int MAXERRORSIZE=3;
 
     /////////////////////// Definição dos pacotes///////////////////////////
 
@@ -150,7 +156,7 @@ public class ftprapid {
         byte[] msg=null;
         if (opcode == 3){
         //System.out.println("opcode: "+opcode);
-        short block = out.getShort();
+        short block = out.getShort();               //need this to get out
         //System.out.println("Block: "+ block);
         //System.out.flush();
         ByteBuffer tmp = ByteBuffer.allocate(data.length-3);
@@ -215,21 +221,45 @@ public class ftprapid {
         return 0;
     }
 
-    public int receive(byte[] msg){
-        return 0;
+    /*     * receive :
+     *
+     *     1. timeout for DATA
+     *     2. receive DATA
+     *     3. send ACK
+     *     4. verify size, se o size < 514, transmition over, senao: 2.
+     */
+    public byte[] receive() throws IOException {
+        byte[] msg;
+        byte [][] packets = new byte[32766][];
+        short receivedBlock=0;
+        short block=0;
+        short lastblock=0;
+        boolean flag = true;
+
+        while(flag){
+            byte[] stream = new byte[514];
+            DatagramPacket dP= new DatagramPacket(stream,MAXDATASIZE);
+            dS.receive(dP);
+            // verify if dP.getData.length < 514
+            // lastBlock = lastPacket length
+            // flag = false
+            // else
+            // send ack
+            packets[receivedBlock] = dP.getData();
+            block++;
+        }
+        ByteBuffer b = ByteBuffer.allocate(514*(block-1) + lastblock);
+        for(int i =0; i<block; i++) b.put(packets[i]);
+        msg= b.array();
+        return msg;
     }
 
     public int requestRR(){
         /* open socket
         * dS.connect(ip,port)
         * check connection
-        * receive :
-        *     1. RR packet
-        *     2. timeout for DATA
-        *     3. receive DATA
-        *     4. send ACK
-        *     5. verify size, se o size < 514, transmition over, senao: 2.
-        *
+        * send RR
+        * receive()
         */
         return 0;
     }
@@ -279,7 +309,7 @@ public class ftprapid {
 
 
     public static void main(String[] ar){
-        ftprapid x = new ftprapid();
+        ftrapid x = new ftrapid();
         byte [] tmp = x.createDATAPackage("ola".getBytes(StandardCharsets.UTF_8))[0];
         System.out.println("Tamnho: " + tmp.length);
         x.readDataPacket(tmp);
