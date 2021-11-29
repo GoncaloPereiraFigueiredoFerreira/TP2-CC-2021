@@ -3,14 +3,16 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.AbstractMap;
 
 
-public class ftrapid {
+public class FTrapid {
 
     //Maybe
     private DatagramSocket dS;
     private final int MAXRDWRSIZE=514; // n sei
-    private final int MAXDATASIZE=514;
+    private final int MAXDATASIZE=1024;
+    private final int MAXDATA = 1019;
     private final int MAXACKSIZE=3;
     private final int MAXERRORSIZE=3;
 
@@ -46,32 +48,34 @@ public class ftrapid {
     *
     *   OPCODE = 3
     *
-    *       1B        2B            N Bytes
-    *   | opcode | nº bloco |        DATA         |
+    *       1B        2B        2B              N Bytes
+    *   | opcode | nº bloco |  length    |        DATA         |
     *
     *   Não precisa de 0?
     *
     *
      */
     public byte[][] createDATAPackage(byte[] data) {
-        int numberPackts = data.length / 512;
-        if (data.length % 512 != 0) numberPackts++; //tamanho maximo = 512, lgo como divInteira arredonda pra baixo
+        int numberPackts = data.length / MAXDATA;
+        if (data.length % MAXDATA != 0) numberPackts++; //tamanho maximo = 512, lgo como divInteira arredonda pra baixo
         // somamos mais 1 se o resto n for 0
 
         byte[][] packets = new byte[numberPackts][];
 
-        int packetLength,ofset=0;
+        short packetLength;
+        int ofset=0;
         for (short i = 0; i < numberPackts; i++) {
 
-            if (data.length- ofset > 512){
-                packetLength=512;
+            if (data.length- ofset > MAXDATA){
+                packetLength=MAXDATA;
             }
             else {
-                packetLength= data.length-ofset;
+                packetLength= (short) (data.length-ofset);
             }
             ByteBuffer out = ByteBuffer.allocate(3+packetLength);
             out.put((byte) 3);
             out.putShort(i);
+            out.putShort(packetLength);
             out.put(data,ofset,packetLength);
             ofset+=packetLength;
             packets[i]=out.array();
@@ -147,9 +151,9 @@ public class ftrapid {
      * Intrepreta pacotes de DATA
      *
      */
-
-    public byte[] readDataPacket(byte[] data){
-        ByteBuffer out = ByteBuffer.allocate(data.length);
+    //simple Entry
+    public AbstractMap.SimpleEntry<Short,byte[]> readDataPacket(byte[] data){
+        ByteBuffer out = ByteBuffer.allocate(MAXDATA);
         out.put(data,0,data.length);
         out.position(0);
         byte opcode = out.get();
@@ -159,14 +163,15 @@ public class ftrapid {
         short block = out.getShort();               //need this to get out
         //System.out.println("Block: "+ block);
         //System.out.flush();
-        ByteBuffer tmp = ByteBuffer.allocate(data.length-3);
+        short length = out.getShort();    // need to get this out
+        ByteBuffer tmp = ByteBuffer.allocate(length);
         tmp.put(out);
         msg=tmp.array();
-
+        AbstractMap.SimpleEntry<Short,byte[]> par = new AbstractMap.SimpleEntry<>(block,msg);
         //String s = new String(msg,StandardCharsets.UTF_8);
         //System.out.println(s);
         }
-        return msg;
+        return par;
     }
 
     /*
@@ -309,7 +314,7 @@ public class ftrapid {
 
 
     public static void main(String[] ar){
-        ftrapid x = new ftrapid();
+        FTrapid x = new FTrapid();
         byte [] tmp = x.createDATAPackage("ola".getBytes(StandardCharsets.UTF_8))[0];
         System.out.println("Tamnho: " + tmp.length);
         x.readDataPacket(tmp);
