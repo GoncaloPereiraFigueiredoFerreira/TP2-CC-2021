@@ -1,6 +1,6 @@
 public class DataPackageInfo {
-    short nrBloco;
-    byte[] data;
+    private short nrBloco;
+    private byte[] data;
 
     public DataPackageInfo(short nrBloco, byte[] data){
         this.nrBloco = nrBloco;
@@ -11,15 +11,8 @@ public class DataPackageInfo {
         return nrBloco;
     }
 
-    public void setNrBloco(short nrBloco) {
-        this.nrBloco = nrBloco;
-    }
-
     public byte[] getData() {
         return data;
     }
 
-    public void setData(byte[] data) {
-        this.data = data;
-    }
 }
