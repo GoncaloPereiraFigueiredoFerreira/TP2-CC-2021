@@ -246,23 +246,12 @@ public class FTrapid {
     }
 
     ///////////////////////////////////Public Methods//////////////////////////////////
-    /*
-    * Verifica o pacote e retorna o opcode deste.
-    *
-    * Como fazer verificação do pacote?
-    */
-    public short verifyPackage(byte[] data){
-        //ByteBuffer out = ByteBuffer.allocate(length);
-        //out.put(data,0,length);
-        //out.position(0);
-        byte opcode = data[0];
-        return opcode;
-    }
+
 
 
     ///////////////////////// Transmition Control ///////////////////////
 
-        //////////Simple Methods//////
+        //////////Methods for workers/////
     /*     * SEND:
      *
      *     1. send data
@@ -396,13 +385,11 @@ public class FTrapid {
     }
 
 
-     public RequestPackageInfo analyseRequest(DatagramPacket dp){
+    public RequestPackageInfo analyseRequest(DatagramPacket dp){
       return readRDWRPacket(dp.getData());
    }
 
-
-
-   public int answer(short mode,short msg){
+    public int answer(short mode,short msg){
        // mode is 1 for error msg or 2 for syn
        // msg is either an error code or a port number
        byte[] packet=null;
@@ -418,5 +405,12 @@ public class FTrapid {
 
    }
 
+    public short verifyPackage(byte[] data){
+        //ByteBuffer out = ByteBuffer.allocate(length);
+        //out.put(data,0,length);
+        //out.position(0);
+        byte opcode = data[0];
+        return opcode;
+    }
 
 }
