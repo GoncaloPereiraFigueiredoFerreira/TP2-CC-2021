@@ -10,11 +10,20 @@ public class FTrapid {
 
     //Maybe
     private DatagramSocket dS;
+    private final byte RDopcode = 1;
+    private final byte WRopcode = 2;
+    private final byte DATAopcode = 3;
+    private final byte ACKopcode = 4;
+    private final byte ERRopcode = 5;
+
     private final int MAXRDWRSIZE=514; // n sei
     private final int MAXDATASIZE=1024;
     private final int MAXDATA = 1019;
     private final int MAXACKSIZE=3;
     private final int MAXERRORSIZE=3;
+
+    //DatagraSocket Sender Size =  65535 B ≃ 64KB
+    //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
 
     /////////////////////// Definição dos pacotes///////////////////////////
 
@@ -34,8 +43,8 @@ public class FTrapid {
     public byte[] createRDWRPackage(String filename,short opcode){
         byte[] packet;
         ByteBuffer out = ByteBuffer.allocate(2+ filename.length());
-        if (opcode==1) out.put((byte) 1);
-        else if (opcode==2) out.put((byte) 2);
+        if (opcode==1) out.put(RDopcode);
+        else if (opcode==2) out.put(WRopcode);
         // else sendException
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
@@ -48,7 +57,7 @@ public class FTrapid {
     *
     *   OPCODE = 3
     *
-    *       1B        2B        2B              N Bytes
+    *       1B        2B        2B            N Bytes < 1019
     *   | opcode | nº bloco |  length    |        DATA         |
     *
     *   Não precisa de 0?
@@ -66,14 +75,12 @@ public class FTrapid {
         int ofset=0;
         for (short i = 0; i < numberPackts; i++) {
 
-            if (data.length- ofset > MAXDATA){
-                packetLength=MAXDATA;
-            }
-            else {
-                packetLength= (short) (data.length-ofset);
-            }
-            ByteBuffer out = ByteBuffer.allocate(3+packetLength);
-            out.put((byte) 3);
+            // packetLength max = MAXDATA
+            packetLength = (short) Integer.min(data.length- ofset,MAXDATA);
+
+            //header de DATA = 5
+            ByteBuffer out = ByteBuffer.allocate(5+packetLength);
+            out.put(DATAopcode);
             out.putShort(i);
             out.putShort(packetLength);
             out.put(data,ofset,packetLength);
@@ -135,10 +142,14 @@ public class FTrapid {
 
     public String readRDWRPacket(byte[] packet){
         ByteBuffer out = ByteBuffer.allocate(packet.length);
+        out.put(packet);
         String ret = null;
-        if (out.get() == 1 || out.get()==2) {
-            byte[] temp = new byte[packet.length - 2];
-            out.get(temp, 1, packet.length - 2);
+        int length=0;
+        if (out.get(0) == 1 || out.get(0)==2) {
+            out.position(1);
+            while(out.get() != (byte) 0) length++;
+            byte[] temp = new byte[length];
+            out.get(temp, 1, length);
             ret = new String(temp, StandardCharsets.UTF_8);
         }
         // else Exception
@@ -155,22 +166,21 @@ public class FTrapid {
         ByteBuffer out = ByteBuffer.allocate(MAXDATA);
         out.put(data,0,data.length);
         out.position(0);
-        byte opcode = out.get();
+        byte opcode = out.get(0);
         byte[] msg=null;
         DataPackageInfo par = null;
 
         if (opcode == 3){
-        //System.out.println("opcode: "+opcode);
-        short block = out.getShort();               //need this to get out
-        //System.out.println("Block: "+ block);
-        //System.out.flush();
-        short length = out.getShort();    // need to get this out
-        ByteBuffer tmp = ByteBuffer.allocate(length);
-        tmp.put(out);
-        msg=tmp.array();
-        par = new DataPackageInfo(block,msg);
-        //String s = new String(msg,StandardCharsets.UTF_8);
-        //System.out.println(s);
+
+            short block = out.getShort();
+            short length = out.getShort();
+
+            ByteBuffer tmp = ByteBuffer.allocate(length);
+            tmp.put(data,5,length);
+            msg=tmp.array();
+
+            par = new DataPackageInfo(block,msg);
+
         }
         return par;
     }
@@ -222,39 +232,93 @@ public class FTrapid {
 
 
     ///////////////////////// Transmition Control ///////////////////////
+    /*     * SEND:
+     *
+     *     1. send data
+     *     2. wait for ack
+     *     3. verify size, se o size < 514, transmition over, senao: 2.
+     *
+     *     1º Versão sequencial para testes
+     *     - O protocolo deverá enviar os pacotes e verificar acks ao msm tempo
+     */
 
     public int send(byte[] msg){
+        //1º convert msg to packets
+        byte [][] packetsData = createDATAPackage(msg);
+
+        //2º start loop of transfer
+        boolean flag = true;
+        int npackets = packetsData.length;
+        for (short i =0; flag;){
+            if (packetsData[i].length < MAXDATASIZE) flag = false;
+            DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length);
+            try {
+                dS.send(dPout);
+            } catch (IOException e) {}
+
+            // 3º Esperar por ACK // Esta parte deveria ser feita por outra thread
+            DatagramPacket dPin = new DatagramPacket(new byte[3],3);
+            try {
+                dS.receive(dPin);
+            } catch (IOException e) {}
+
+            // 4º Traduzir Ack
+            if (this.verifyPackage(dPin.getData())==4) {
+                short packet = this.readACKPacket(dPin.getData());
+                if (packet == i) i++;
+            }
+        }
         return 0;
     }
 
-    /*     * receive :
+
+    /*     * RECEIVE :
      *
      *     1. timeout for DATA
      *     2. receive DATA
      *     3. send ACK
-     *     4. verify size, se o size < 514, transmition over, senao: 2.
+     *     4. verify size, se o size < 514, transmition over, senao: 1.
      */
-    public byte[] receive() throws IOException {
+    public byte[] receive() {
         byte[] msg;
         byte [][] packets = new byte[32766][];
-        short receivedBlock=0;
-        short block=0;
         short lastblock=0;
         boolean flag = true;
+        DataPackageInfo info = null;
 
+        // 1º Start loop
         while(flag){
-            byte[] stream = new byte[514];
-            DatagramPacket dP= new DatagramPacket(stream,MAXDATASIZE);
-            dS.receive(dP);
-            // verify if dP.getData.length < 514
-            // lastBlock = lastPacket length
-            // flag = false
-            // else
-            // send ack
-            packets[receivedBlock] = dP.getData();
-            block++;
+            DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
+
+            try {
+                dS.receive(dPin);
+            } catch (IOException e) {}
+
+
+
+            // 2º Verificar Package Recebido e guardar
+            if (verifyPackage(dPin.getData()) == 3){
+                info = this.readDataPacket(dPin.getData());
+                if (info.getData().length < MAXDATASIZE) {flag = false; lastblock = (short) info.getData().length;}
+                packets[info.getNrBloco()]=info.getData();
+            }
+            //else exception
+
+            // 3º Send ACK
+            DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()),MAXACKSIZE);
+            try {
+                dS.send(dPout);
+            } catch (IOException e) {}
+
         }
-        ByteBuffer b = ByteBuffer.allocate(514*(block-1) + lastblock);
+        //preciso de verificar quais os pacotes que faltam
+        int block =0;
+
+        //verificaçao super simples que pode n funcionar se todos os pacotes n tiverem sido enviados
+        for(; packets[block]!=null;block++);
+
+
+        ByteBuffer b = ByteBuffer.allocate(MAXDATA*(block-1) + lastblock);
         for(int i =0; i<block; i++) b.put(packets[i]);
         msg= b.array();
         return msg;
