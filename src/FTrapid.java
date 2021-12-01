@@ -76,7 +76,6 @@ public class FTrapid {
      */
     private byte[][] createDATAPackage(byte[] data) {
         int numberPackts = data.length / MAXDATA;  //gets number of packets (rounded down)
-        /*(PRINT)*/ System.out.println("NumberOfPackts: " + numberPackts);
 
         //To better understand this line, keep in mind that the last packet has to have a length lower than MAXDATA,
         //to indicate the end of the transfer.
@@ -86,7 +85,6 @@ public class FTrapid {
         // 2) If the rest of the division is different than 1, the value will be rounded down,
         //    giving the number of packets lower by 1 unit
         if(numberPackts != MAXDATAPACKETSNUMBER) numberPackts++;
-        /*(PRINT)*/ System.out.println("NumberOfPackts: " + numberPackts);
 
         byte[][] packets = new byte[numberPackts][];
 
@@ -261,24 +259,9 @@ public class FTrapid {
         return ret;
     }
 
-    ///////////////////////////////////Public Methods//////////////////////////////////
-    /*
-    * Verifica o pacote e retorna o opcode deste.
-    *
-    * Como fazer verificação do pacote?
-    */
-    public short verifyPackage(byte[] data){
-        //ByteBuffer out = ByteBuffer.allocate(length);
-        //out.put(data,0,length);
-        //out.position(0);
-        byte opcode = data[0];
-        return opcode;
-    }
-
-
     ///////////////////////// Transmition Control ///////////////////////
 
-        //////////Simple Methods//////
+        //////////Methods for workers/////
     /*     * SEND:
      *
      *     1. send data
@@ -348,7 +331,7 @@ public class FTrapid {
 
             // 2º Verificar Package Recebido e guardar
             if (verifyPackage(dPin.getData()) == 3){
-                info = readDataPacket(dPin.getData()); System.out.println(Arrays.toString(dPin.getData()));
+                info = readDataPacket(dPin.getData());
                 if (info.getData().length < MAXDATA || info.getNrBloco() == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false; lastblock = (short) info.getData().length;}
                 packets[info.getNrBloco()]=info.getData();
             }
@@ -416,10 +399,9 @@ public class FTrapid {
 
     public RequestPackageInfo analyseRequest(DatagramPacket dp){
       return readRDWRPacket(dp.getData());
-    }
+   }
 
-
-   public int answer(short mode,short msg){
+    public int answer(short mode,short msg){
        // mode is 1 for error msg or 2 for syn
        // msg is either an error code or a port number
        byte[] packet=null;
@@ -435,5 +417,12 @@ public class FTrapid {
 
    }
 
+    public short verifyPackage(byte[] data){
+        //ByteBuffer out = ByteBuffer.allocate(length);
+        //out.put(data,0,length);
+        //out.position(0);
+        byte opcode = data[0];
+        return opcode;
+    }
 
 }
