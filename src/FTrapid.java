@@ -3,6 +3,9 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+import static java.lang.Math.max;
 
 
 public class FTrapid {
@@ -16,13 +19,17 @@ public class FTrapid {
     private final byte ERRopcode = 5;
     private final byte SYNopcode = 6;
 
-    private final int MAXRDWRSIZE=514; // n sei
-    private final int MAXDATASIZE=1024;
-    private final int MAXDATA = 1019;
-    private final int MAXACKSIZE=3;
-    private final int MAXERRORSIZE=3;
-    private final int MAXSYNSIZE=3;
+    public static final int MAXRDWRSIZE=514; // n sei
+    public static final int MAXDATASIZE=1024;
+    public static final int MAXDATA = 1019;
+    public static final int MAXACKSIZE=3;
+    public static final int MAXERRORSIZE=3;
+    public static final int MAXSYNSIZE=3;
+    public static final int MAXDATAPACKETSNUMBER = 32768;
 
+    public FTrapid(DatagramSocket ds){
+        this.dS = ds;
+    }
 
     //DatagraSocket Sender Size =  65535 B ≃ 64KB
     //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
@@ -68,23 +75,31 @@ public class FTrapid {
     *
      */
     private byte[][] createDATAPackage(byte[] data) {
-        int numberPackts = data.length / MAXDATA;
-        if (data.length % MAXDATA != 0) numberPackts++; //tamanho maximo = 512, lgo como divInteira arredonda pra baixo
-        // somamos mais 1 se o resto n for 0
+        int numberPackts = data.length / MAXDATA;  //gets number of packets (rounded down)
+        /*(PRINT)*/ System.out.println("NumberOfPackts: " + numberPackts);
+
+        //To better understand this line, keep in mind that the last packet has to have a length lower than MAXDATA,
+        //to indicate the end of the transfer.
+        //Now, this line is used for 2 reasons:
+        // 1) If the data.length divided by MAXDATA has rest equal to 0,
+        //    we need another package with length lower than MAXDATA
+        // 2) If the rest of the division is different than 1, the value will be rounded down,
+        //    giving the number of packets lower by 1 unit
+        if(numberPackts != MAXDATAPACKETSNUMBER) numberPackts++;
+        /*(PRINT)*/ System.out.println("NumberOfPackts: " + numberPackts);
 
         byte[][] packets = new byte[numberPackts][];
 
         short packetLength;
         int ofset=0;
-        for (short i = 0; i < numberPackts; i++) {
+        for (int i = 0; i < numberPackts; i++) {
 
             // packetLength max = MAXDATA
-            packetLength = (short) Integer.min(data.length- ofset,MAXDATA);
-
+            packetLength = (short) Integer.min(data.length - ofset,MAXDATA);
             //header de DATA = 5
             ByteBuffer out = ByteBuffer.allocate(5+packetLength);
             out.put(DATAopcode);
-            out.putShort(i);
+            out.putShort((short) i);
             out.putShort(packetLength);
             out.put(data,ofset,packetLength);
             ofset+=packetLength;
@@ -109,7 +124,7 @@ public class FTrapid {
     private byte[] createACKPackage(short block) {
         byte[] packet;
         ByteBuffer out = ByteBuffer.allocate(3);
-        out.put((byte) 4);
+        out.put(ACKopcode);
         out.putShort(block);
         packet = out.array();
         return packet;
@@ -171,7 +186,7 @@ public class FTrapid {
         short port = -1;
 
         int length=0;
-        if (out.get(0) == 1 || out.get(0)==2) {
+        if (out.get(0) == WRopcode || out.get(0)==RDopcode) {
             port = out.getShort(1);
             out.position(3);
             while(out.get() != (byte) 0) length++;
@@ -191,22 +206,21 @@ public class FTrapid {
      *
      */
     private DataPackageInfo readDataPacket(byte[] data){
-        ByteBuffer out = ByteBuffer.allocate(MAXDATA);
+        ByteBuffer out = ByteBuffer.allocate(MAXDATASIZE);
         out.put(data,0,data.length);
         out.position(0);
         byte opcode = out.get(0);
         byte[] msg=null;
         DataPackageInfo par = null;
 
-        if (opcode == 3){
+        if (opcode == DATAopcode){
 
-            short block = out.getShort();
-            short length = out.getShort();
+            short block = out.getShort(1);
+            short length = out.getShort(3);
 
             ByteBuffer tmp = ByteBuffer.allocate(length);
             tmp.put(data,5,length);
             msg=tmp.array();
-
             par = new DataPackageInfo(block,msg);
 
         }
@@ -221,9 +235,10 @@ public class FTrapid {
 
     private short readACKPacket(byte[] packet){
         ByteBuffer out = ByteBuffer.allocate(packet.length);
+        out.put(packet);
         short ret = -1;
-        if (out.get() == 1 || out.get()==2) {
-            ret = out.getShort();
+        if (out.get(0) == ACKopcode) {
+            ret = out.getShort(1);
         }
         // else Exception
         return ret;
@@ -237,8 +252,9 @@ public class FTrapid {
 
     private short readERRSYNPacket(byte[] packet){
         ByteBuffer out = ByteBuffer.allocate(packet.length);
+        out.put(packet);
         short ret = -1;
-        if (out.get(0) == 5 || out.get(0)==6) {
+        if (out.get(0) == ERRopcode || out.get(0)==SYNopcode) {
             ret = out.getShort(1);
         }
         // else Exception
@@ -281,7 +297,8 @@ public class FTrapid {
         boolean flag = true;
         int npackets = packetsData.length;
         for (short i =0; flag;){
-            if (packetsData[i].length < MAXDATASIZE) flag = false;
+            if (packetsData[i].length < MAXDATASIZE || i == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false;}
+
             DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length);
             try {
                 dS.send(dPout);
@@ -296,8 +313,8 @@ public class FTrapid {
 
             // 4º Traduzir Ack
             if (this.verifyPackage(dPin.getData())==4) {
-                short packet = this.readACKPacket(dPin.getData());
-                if (packet == i) i++;
+                short packet = readACKPacket(dPin.getData());
+                if (packet == i) { i++; }
             }
         }
         return 0;
@@ -313,7 +330,7 @@ public class FTrapid {
      */
     public byte[] receiveData() {
         byte[] msg;
-        byte [][] packets = new byte[32766][];
+        byte [][] packets = new byte[MAXDATAPACKETSNUMBER][];
         short lastblock=0;
         boolean flag = true;
         DataPackageInfo info = null;
@@ -331,8 +348,8 @@ public class FTrapid {
 
             // 2º Verificar Package Recebido e guardar
             if (verifyPackage(dPin.getData()) == 3){
-                info = this.readDataPacket(dPin.getData());
-                if (info.getData().length < MAXDATASIZE) {flag = false; lastblock = (short) info.getData().length;}
+                info = readDataPacket(dPin.getData()); System.out.println(Arrays.toString(dPin.getData()));
+                if (info.getData().length < MAXDATA || info.getNrBloco() == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false; lastblock = (short) info.getData().length;}
                 packets[info.getNrBloco()]=info.getData();
             }
             //else exception
@@ -348,10 +365,9 @@ public class FTrapid {
         int block =0;
 
         //verificação super simples que pode n funcionar se todos os pacotes n tiverem sido enviados
-        for(; packets[block]!=null;block++);
+        for(; block < MAXDATAPACKETSNUMBER && packets[block]!=null ;block++);
 
-
-        ByteBuffer b = ByteBuffer.allocate(MAXDATA*(block-1) + lastblock);
+        ByteBuffer b = ByteBuffer.allocate(MAXDATA * (block-1) + lastblock);
         for(int i =0; i<block; i++) b.put(packets[i]);
         msg= b.array();
         return msg;
@@ -361,6 +377,9 @@ public class FTrapid {
 
     ////////Methods for main Port////////////
 
+    //Mode:
+    // - 1 to Read Request
+    // - 2 to Write Request
     public int requestRRWR(String filename,short port,short mode){
         byte[] readRequest =null;
         if (mode == 1) createRDWRPackage(filename,RDopcode,port);
@@ -395,11 +414,9 @@ public class FTrapid {
         return ret;
     }
 
-
-     public RequestPackageInfo analyseRequest(DatagramPacket dp){
+    public RequestPackageInfo analyseRequest(DatagramPacket dp){
       return readRDWRPacket(dp.getData());
-   }
-
+    }
 
 
    public int answer(short mode,short msg){
