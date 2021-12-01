@@ -95,7 +95,7 @@ public class ConnectionWorker implements Runnable{
             }
 
             //Last call
-            int lastCallLength = (int) (fileLength % MAXDATAPERCONNECTION); /*(PRINT)*/System.out.println("lastcallLength: " + lastCallLength);
+                int lastCallLength = (int) (fileLength % MAXDATAPERCONNECTION);
             buffer = new byte[lastCallLength];
             try { fips.read(buffer); }
             catch (IOException e) {

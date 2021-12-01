@@ -51,7 +51,7 @@ public class FFSync {
         }
         ds.connect(InetAddress.getByName("localhost"),12222);
 
-        ConnectionWorker connectionWorker = new ConnectionWorker(true,false,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/teste3.txt",ds);
+        ConnectionWorker connectionWorker = new ConnectionWorker(true,false,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/teste.txt",ds);
         connectionWorker.run();
     }
 
