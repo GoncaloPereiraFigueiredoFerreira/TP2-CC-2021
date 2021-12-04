@@ -3,6 +3,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 
 
 public class FTrapid {
@@ -22,6 +23,7 @@ public class FTrapid {
     public static final int MAXERRORSIZE=3;
     public static final int MAXSYNSIZE=3;
     public static final int MAXDATAPACKETSNUMBER = 32768;
+    private static final int HEADERWRQ = 12;
 
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
@@ -30,6 +32,7 @@ public class FTrapid {
     //DatagraSocket Sender Size =  65535 B ≃ 64KB
     //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
 
+    //TODO: Implementar pacotes de autenticaçao/ inicialização
     /////////////////////// Definição dos pacotes///////////////////////////
 
     /*
@@ -37,20 +40,20 @@ public class FTrapid {
      *
      *   OPCODE = 1 / 2
      *
-     *       1B       2B          String         1B
-     *   | opcode |  Porta  |     Filename    |  0  |
      *
-     *
+     *       1B         2B           8B                    String          1B
+     *    | opcode |  Porta  |     Long Data      |      Filename      |   0   |
      *
      *
      */
 
-    private byte[] createRDWRPackage(String filename,short opcode, short port){
+    private byte[] createRDWRPackage(String filename, short opcode, short port, long data){
         byte[] packet;
-        ByteBuffer out = ByteBuffer.allocate(2+ filename.length());
+        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.length());
         if (opcode==1) out.put(RDopcode);
         else if (opcode==2) out.put(WRopcode);
         out.putShort(port);
+        out.putLong(data);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
         packet = out.array();
@@ -63,7 +66,7 @@ public class FTrapid {
     *   OPCODE = 3
     *
     *       1B        2B        2B            N Bytes < 1019
-    *   | opcode | nº bloco |  length    |        DATA         |
+    *   | opcode | nº bloco |  length    |        Dados         |
     *
     *   Não precisa de 0?
     *
@@ -164,6 +167,53 @@ public class FTrapid {
         return packet;
     }
 
+    /*
+    * 1º Organizar os ficheiros que temos na nossa pasta
+    * 2º Obter o lastModified data
+    * 3º Construir os pacotes com informação a cerca do estado da pasta
+    * 4º Enviar esta informação
+    * 5º Receber esta informação
+    * 6º Traduzir
+    * 7º Perceber que ficheiros serão transferidos e quais não
+    * 8º Criar queue de ficheiros a serem enviados
+    * 9º Começar a enviar e receber os ficheiros da mesma forma que o planeado?
+    *
+    *   -> Sincronizamos até 10 ficheiros de cada vez? Por causa dos ports?
+    *   -> Precisamos de uma sequencia de inicialização de FFSYNC, com thread pronta a receber a informaçao do outro lado
+    *   -> Precisamos de estrutura para guardar todas as informações dos ficheiros a serem transferidos
+    *   -> Como seria feito o Package de inicialização
+    *       - data representada precisava de pelo menos 12B : YYMMDDHHMMSS
+    *       - o nome seria uma string, sem limite... (pode dar problemas)
+    *           -devíamos definir um limite tipo 30B (senão erro), mas em java isto equivale a 15 carateres...
+    *
+    *       - precisava de um opcode na msm
+    *       - um Byte 0, para determinar o fim da String
+    *       - Portanto no final de contas ficamos com 12+30+2 = 44
+    *
+     *       - Considerando que as msgs podem no máximo ter 1024B
+    *
+    *           -Podiamos enviar 1024/44 = 23 ficheiros numa só mensagem...
+    *       - Podemos fazer um ciclo sempre a enviar as infos dos ficheiros até n existem mais ficheiros
+    *
+    *   ->Entretanto, uma thread precisa de estar a espera para receber a informação dos ficheiros do outro cliente
+    *       - quando receber um pacote terá de iniciar outra thread que preenche uma estrutura com os ficheiros a serem transferidos
+    *       - quando receber menos do que 23 ficheiros fecha a ligação ou esperamos pelo timeout
+    *
+    *   -> Depois de a queue de transferências ser feita, apenas precisamos de WRQ
+    *       - uma thread recebe os WRQ
+    *       - outra trata da queue e envia os seus WRQ
+    *
+    */
+
+
+
+
+
+
+
+
+
+
     ///////////////////////// Interpreta Packets ////////////////////////////7
 
     /*
@@ -177,16 +227,18 @@ public class FTrapid {
         out.put(packet);
         String ret = null;
         short port = -1;
+        long data = -1;
         RequestPackageInfo info = null;
         int length=0;
         if (out.get(0) == WRopcode || out.get(0)==RDopcode) {
             port = out.getShort(1);
-            out.position(3);
+            data = out.getLong(3);
+            out.position(11);
             while(out.get() != (byte) 0) length++;
             byte[] temp = new byte[length];
             out.get(temp, 1, length);
             ret = new String(temp, StandardCharsets.UTF_8);
-            info = new RequestPackageInfo(out.get(0),port,ret);
+            info = new RequestPackageInfo(out.get(0),port,ret,data);
         }
         return info;
     }
@@ -339,13 +391,13 @@ public class FTrapid {
     //Mode:
     // - 1 to Read Request
     // - 2 to Write Request
-    public int requestRRWR(String filename,short port,short mode) throws OpcodeNotRecognizedException, IOException {
+    public int requestRRWR(String filename,short port,short mode,long data) throws OpcodeNotRecognizedException, IOException {
         byte[] request =null;
-        if (mode == 1)request= createRDWRPackage(filename,RDopcode,port);
-        else if (mode == 2)request=  createRDWRPackage(filename,WRopcode,port);
+        if (mode == 1)request= createRDWRPackage(filename,RDopcode,port,data);
+        else if (mode == 2)request=  createRDWRPackage(filename,WRopcode,port,data);
         else throw new OpcodeNotRecognizedException();
         boolean flag=true;
-        byte[] msg = null;
+        byte[] msg;
         int ret=0;
 
         while(flag) {
@@ -372,11 +424,12 @@ public class FTrapid {
       return readRDWRPacket(dp.getData());
    }
 
+   public short analyseAnswer(DatagramPacket dp){return readERRSYNPacket(dp.getData());}
 
     public void answer(short mode,short msg) throws OpcodeNotRecognizedException,IOException {
        // mode is 1 for error msg or 2 for syn
        // msg is either an error code or a port number
-       byte[] packet=null;
+       byte[] packet;
        if (mode == 1) packet= createERRORPackage(msg);
        else if (mode ==2) packet = createSYNPackage(msg);
        else throw new OpcodeNotRecognizedException();

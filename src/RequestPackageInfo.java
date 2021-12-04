@@ -5,12 +5,15 @@ public class RequestPackageInfo {
     private short mode;
     private short port;
     private String filename;
+    private long data;
 
-    public RequestPackageInfo(short mode, short port, String filename) {
+    public RequestPackageInfo(short mode, short port, String filename, long data) {
         this.mode = mode;
         this.port = port;
         this.filename = filename;
+        this.data = data;
     }
+
 
     public short getPort() {
         return port;
@@ -19,9 +22,12 @@ public class RequestPackageInfo {
     public short getMode() {
         return mode;
     }
-    public String getData() {
-        return filename;
+    public long getData() {
+        return data;
     }
 
 
+    public String getFilename() {
+        return filename;
+    }
 }
