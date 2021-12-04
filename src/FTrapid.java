@@ -3,15 +3,11 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-
-import static java.lang.Math.max;
 
 
 public class FTrapid {
 
-    //Maybe
-    private DatagramSocket dS;
+    private final DatagramSocket dS;
     private final byte RDopcode = 1;
     private final byte WRopcode = 2;
     private final byte DATAopcode = 3;
@@ -54,7 +50,6 @@ public class FTrapid {
         ByteBuffer out = ByteBuffer.allocate(2+ filename.length());
         if (opcode==1) out.put(RDopcode);
         else if (opcode==2) out.put(WRopcode);
-        // else sendException
         out.putShort(port);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
@@ -182,7 +177,7 @@ public class FTrapid {
         out.put(packet);
         String ret = null;
         short port = -1;
-
+        RequestPackageInfo info = null;
         int length=0;
         if (out.get(0) == WRopcode || out.get(0)==RDopcode) {
             port = out.getShort(1);
@@ -191,10 +186,9 @@ public class FTrapid {
             byte[] temp = new byte[length];
             out.get(temp, 1, length);
             ret = new String(temp, StandardCharsets.UTF_8);
+            info = new RequestPackageInfo(out.get(0),port,ret);
         }
-        // else Exception
-
-        return new RequestPackageInfo(out.get(0),port,ret);
+        return info;
     }
 
 
@@ -208,11 +202,10 @@ public class FTrapid {
         out.put(data,0,data.length);
         out.position(0);
         byte opcode = out.get(0);
-        byte[] msg=null;
+        byte[] msg;
         DataPackageInfo par = null;
 
         if (opcode == DATAopcode){
-
             short block = out.getShort(1);
             short length = out.getShort(3);
 
@@ -238,7 +231,6 @@ public class FTrapid {
         if (out.get(0) == ACKopcode) {
             ret = out.getShort(1);
         }
-        // else Exception
         return ret;
     }
 
@@ -255,7 +247,6 @@ public class FTrapid {
         if (out.get(0) == ERRopcode || out.get(0)==SYNopcode) {
             ret = out.getShort(1);
         }
-        // else Exception
         return ret;
     }
 
@@ -272,35 +263,31 @@ public class FTrapid {
      *     - O protocolo deverá enviar os pacotes e verificar acks ao msm tempo
      */
 
-    public int sendData(byte[] msg){
+    public void sendData(byte[] msg) throws IOException {
         //1º convert msg to packets
         byte [][] packetsData = createDATAPackage(msg);
 
         //2º start loop of transfer
         boolean flag = true;
-        int npackets = packetsData.length;
         for (short i =0; flag;){
             if (packetsData[i].length < MAXDATASIZE || i == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false;}
 
             DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length);
-            try {
-                dS.send(dPout);
-            } catch (IOException e) {}
+            dS.send(dPout);
 
             // 3º Esperar por ACK // Esta parte deveria ser feita por outra thread
             DatagramPacket dPin = new DatagramPacket(new byte[3],3);
-            try {
-                //fica locked em caso de não receber nada (deveria ter um timeout)
-                dS.receive(dPin);
-            } catch (IOException e) {}
+
+            //fica locked em caso de não receber nada (deveria ter um timeout) socket.setSoTimeout(10*1000);
+            dS.receive(dPin);
 
             // 4º Traduzir Ack
-            if (this.verifyPackage(dPin.getData())==4) {
+            if (this.verifyPackage(dPin.getData())==ACKopcode) {
                 short packet = readACKPacket(dPin.getData());
                 if (packet == i) { i++; }
             }
         }
-        return 0;
+
     }
 
 
@@ -311,7 +298,7 @@ public class FTrapid {
      *     3. send ACK
      *     4. verify size, se o size < 514, transmition over, senao: 1.
      */
-    public byte[] receiveData() {
+    public byte[] receiveData() throws IOException {
         byte[] msg;
         byte [][] packets = new byte[MAXDATAPACKETSNUMBER][];
         short lastblock=0;
@@ -322,26 +309,15 @@ public class FTrapid {
         while(flag){
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
 
-            try {
-                //fica locked em caso de não receber nada (deveria ter um timeout)
-                dS.receive(dPin);
-            } catch (IOException e) {}
-
-
-
+            dS.receive(dPin);
             // 2º Verificar Package Recebido e guardar
             if (verifyPackage(dPin.getData()) == 3){
                 info = readDataPacket(dPin.getData());
                 if (info.getData().length < MAXDATA || info.getNrBloco() == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false; lastblock = (short) info.getData().length;}
                 packets[info.getNrBloco()]=info.getData();
-            }
-            //else exception
-
-            // 3º Send ACK
-            DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()),MAXACKSIZE);
-            try {
+                DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()),MAXACKSIZE);
                 dS.send(dPout);
-            } catch (IOException e) {}
+            }
 
         }
         //preciso de verificar quais os pacotes que faltam
@@ -363,32 +339,25 @@ public class FTrapid {
     //Mode:
     // - 1 to Read Request
     // - 2 to Write Request
-    public int requestRRWR(String filename,short port,short mode){
-        byte[] readRequest =null;
-        if (mode == 1) createRDWRPackage(filename,RDopcode,port);
-        else if (mode == 2) createRDWRPackage(filename,WRopcode,port);
+    public int requestRRWR(String filename,short port,short mode) throws OpcodeNotRecognizedException, IOException {
+        byte[] request =null;
+        if (mode == 1)request= createRDWRPackage(filename,RDopcode,port);
+        else if (mode == 2)request=  createRDWRPackage(filename,WRopcode,port);
+        else throw new OpcodeNotRecognizedException();
         boolean flag=true;
-        //else exception
         byte[] msg = null;
         int ret=0;
 
         while(flag) {
+            dS.send(new DatagramPacket(request, request.length));
 
-            try {
-                dS.send(new DatagramPacket(readRequest, readRequest.length));
-            } catch (IOException e) {
-            }
 
-            try {
-                //receives either an error or a SYN
-                msg = new byte[MAXERRORSIZE];
-                dS.receive(new DatagramPacket(msg, MAXERRORSIZE));
-            } catch (IOException e) {
-            }
+            //receives either an error or a SYN
+            msg = new byte[MAXERRORSIZE];
+            dS.receive(new DatagramPacket(msg, MAXERRORSIZE));
 
-            if (msg.length > 0) { // se n houve timeouts
-                //analyse the msg to recognize any errors and get port
-                int opcode = verifyPackage(msg);
+            int opcode = verifyPackage(msg);
+            if (opcode == SYNopcode || opcode == ERRopcode) {
                 ret = readERRSYNPacket(msg);
                 if (opcode == 5) ret = -ret;
                 flag = false;
@@ -396,33 +365,32 @@ public class FTrapid {
         }
         return ret;
     }
-
+    /*
+    * Retorna um pacote de informçao, pode vir a nulo
+     */
     public RequestPackageInfo analyseRequest(DatagramPacket dp){
       return readRDWRPacket(dp.getData());
    }
 
-    public int answer(short mode,short msg){
+
+    public void answer(short mode,short msg) throws OpcodeNotRecognizedException,IOException {
        // mode is 1 for error msg or 2 for syn
        // msg is either an error code or a port number
        byte[] packet=null;
        if (mode == 1) packet= createERRORPackage(msg);
        else if (mode ==2) packet = createSYNPackage(msg);
-       //else exception
+       else throw new OpcodeNotRecognizedException();
 
-       try {
-           dS.send(new DatagramPacket(packet,packet.length));
-       } catch (IOException e) {}
-
-       return 0;
+        dS.send(new DatagramPacket(packet,packet.length));
 
    }
 
+   /*
+   *    Verifica a integridade do package
+   *
+    */
     public short verifyPackage(byte[] data){
-        //ByteBuffer out = ByteBuffer.allocate(length);
-        //out.put(data,0,length);
-        //out.position(0);
-        byte opcode = data[0];
-        return opcode;
+        return data[0];
     }
 
 }
