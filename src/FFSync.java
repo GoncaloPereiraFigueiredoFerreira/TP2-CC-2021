@@ -56,17 +56,17 @@ public class FFSync {
 
         try {
             ds = new DatagramSocket(14444);
-            ds.connect(InetAddress.getByName("localhost"),15555);
-            ds2 = new DatagramSocket(15555);
-            ds2.connect(InetAddress.getByName("localhost"),14444);
+            ds.connect(InetAddress.getByName("192.168.1.68"),14444);
+            //ds2 = new DatagramSocket(14444);
+            //ds2.connect(InetAddress.getByName("192.168.1.68"),15555);
         } catch (SocketException | UnknownHostException e) {
             System.out.println("Erro  a iniciar sockets");
             e.printStackTrace();
             return;
         }
 
-        ConnectionWorker receiver = new ConnectionWorker(true, "localhost", folderPath2, filesInDir2, ds, readLock, writeLock, requestsSent, requestsReceived);
-        ConnectionWorker sender = new ConnectionWorker(false, "localhost", folderPath1, filesInDir1, ds2, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker receiver = new ConnectionWorker(true, "192.168.1.68", folderPath2, filesInDir1, ds, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker sender = new ConnectionWorker(false, "192.168.1.68", folderPath1, filesInDir1, ds, readLock, writeLock, requestsSent, requestsReceived);
 
         receiver.start();
         sender.start();

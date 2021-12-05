@@ -287,7 +287,8 @@ public class FTrapid {
             out.position(3);
             while(out.get() != (byte) 0) length++;
             byte[] temp = new byte[length];
-            out.get(temp, 3, length);
+            out.position(3);
+            out.get(temp, 0, length);
             filename = new String(temp,StandardCharsets.UTF_8);
             ret= new ErrorSynPackageInfo(msg,filename);
         }
@@ -309,7 +310,8 @@ public class FTrapid {
             out.position(1);
             while(out.get() != (byte) 0) length++;
             byte[] temp = new byte[length];
-            out.get(temp, 1, length);
+            out.position(1);
+            out.get(temp, 0, length);
             password = new String(temp,StandardCharsets.UTF_8);
 
         }
