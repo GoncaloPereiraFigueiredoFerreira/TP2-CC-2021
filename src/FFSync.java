@@ -1,43 +1,91 @@
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.util.Random;
-import java.util.Scanner;
+import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class FFSync {
-    /*
-     * 1. metodo read e write que le ficheiro e transforma em array de bytes, tendo em conta tamanho maximo de 2^(16) * 1019
-     *
-     * 2. abrir e lidar com sockets
-     * 3. threads
-     * 4. http por tcp
-     * 5. status
-     *
-     */
+    /*private class PacketResender extends TimerTask {
+        private final DatagramSocket ds;
+        private final Map<String,Long> files;
+        private final Map<Short,AbstractMap.SimpleEntry<DatagramSocket,PackageInfo>> packets;
 
-    /* Cliente que manda
-     * 1. Envia Request pela porta 80 (udp), inclui porta livre
-     * 2. Espera por SYN ( vem acompanhado da porta livre do servidor)
-     * 3. Cria DatagramSocket e iniciamos conexao
-     * 4. Criada thread com o socket
-     * 5. Preparar ficheiros de ler/escrever
-     * 6. criar ftRapid com o socket
-     */
+        PacketResender(DatagramSocket ds, Map<String,Long> files, Map<Short,AbstractMap.SimpleEntry<DatagramSocket,PackageInfo>> packets){
+            this.ds      = ds;
+            this.files   = files;
+            this.packets = packets;
+        }
 
-    /* Cliente que recebe
-     * 1. Espera por request na porta 80
-     * 2. Devolve SYN com porta livre
-     * 3. Cria Socket e inicia conexao
-     * 4. Cria thread com socket
-     * 5. Preparar ficheiros ler/escrever
-     * 6. Criar ftRapid com o socket
-     */
+        @Override
+        public void run() {
+
+        }
+    }*/
 
     public static void main(String[] args) throws UnknownHostException {
-        teste2();
+        teste1();
     }
+
+    public static void teste1(){
+        String folderPath1 = "/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/", folderPath2 = "/home/alexandrof/UNI/3ano1sem/CC/FilesReceived/";
+        Random random = new Random();
+
+        //generateFile("/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/teste1.txt",random.nextInt(40000));
+        //generateFile("/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/teste2.txt",random.nextInt(40000));
+        //generateFile("/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/teste3.txt",random.nextInt(40000));
+        //generateFile("/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/teste4.txt",random.nextInt(40000));
+        //generateFile("/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/teste5.txt",random.nextInt(40000));
+
+
+        Map<String,Long> filesInDir1 = null, filesInDir2 = null;
+        try {
+            filesInDir1 = fillDirMap(folderPath1); System.out.println("filesInDir1: " + filesInDir1);
+            filesInDir2 = fillDirMap(folderPath2); System.out.println("filesInDir2: " + filesInDir2);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+
+        DatagramSocket ds = null; DatagramSocket ds2 = null;
+        ReentrantLock readLock = new ReentrantLock();
+        ReentrantLock writeLock = new ReentrantLock();
+        Map<String,TransferWorker> requestsSent = new HashMap<>();
+        Map<String,TransferWorker> requestsReceived = new HashMap<>();
+
+        try {
+            ds = new DatagramSocket(14444);
+            ds.connect(InetAddress.getByName("localhost"),15555);
+            ds2 = new DatagramSocket(15555);
+            ds2.connect(InetAddress.getByName("localhost"),14444);
+        } catch (SocketException | UnknownHostException e) {
+            System.out.println("Erro  a iniciar sockets");
+            e.printStackTrace();
+            return;
+        }
+
+        ConnectionWorker receiver = new ConnectionWorker(true, "localhost", folderPath2, filesInDir2, ds, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker sender = new ConnectionWorker(false, "localhost", folderPath1, filesInDir1, ds2, readLock, writeLock, requestsSent, requestsReceived);
+
+        receiver.start();
+        sender.start();
+
+        try {
+            receiver.join();
+            sender.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+
+        //Scanner sc = new Scanner(System.in);
+        //System.out.print("Pasta:");
+        //args[0]=sc.next();
+        //System.out.print("IP:");
+        //args[1]=sc.next();
+    }
+
 
     public static void teste2() throws UnknownHostException {
         //args[0] is the name of the folder to be shared
@@ -51,82 +99,133 @@ public class FFSync {
         }
         ds.connect(InetAddress.getByName("localhost"),12222);
 
-        ConnectionWorker connectionWorker = new ConnectionWorker(true,false,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/teste.txt",ds);
-        connectionWorker.run();
+        TransferWorker transferWorker = new TransferWorker(false,true,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/","test1.m4a",ds);
+        transferWorker.run();
     }
 
-    public static void teste1(){
-        /*String[] args = new String[2];
-        Scanner sc = new Scanner(System.in);
-        System.out.print("Pasta:");
-        args[0]=sc.next();
-        System.out.print("IP:");
-        args[1]=sc.next();*/
 
-        //Socket used to handle requests
-        DatagramSocket ds;
+    /* ******** Auxiliar Methods ******** */
 
-        try {
-            ds = new DatagramSocket(65000);
-            ds.connect(InetAddress.getByName("localhost"),65001); //192.168.1.68
-            String oi = "ola";
+    public static Map<String,Long> fillDirMap(String path) throws Exception {
+        Map<String,Long> filesInDir = new HashMap<>();
+        File dir = new File(path);
 
-
-
-            byte[] arr = new byte[64];
-            try {
-                System.out.println("Waiting for message");
-                ds.receive(new DatagramPacket(arr,64));
-                System.out.println("Got message");
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.out.println("Couldnt receive msg");
+        if (dir.isDirectory()){
+            File[] fs = dir.listFiles();
+            if (fs != null) {
+                for (File f : fs) {
+                    if (f.isFile()) {
+                        long data = f.lastModified();
+                        String name = f.getName();
+                        filesInDir.put(name, data);
+                    }
+                }
             }
-            System.out.println(new String(arr,StandardCharsets.UTF_8));
-
-            try {
-                ds.send(new DatagramPacket(oi.getBytes(StandardCharsets.UTF_8),oi.getBytes(StandardCharsets.UTF_8).length));
-                System.out.println("Message sended");
-            } catch (IOException e) {
-                System.out.println("Couldnt send msg");
-                e.printStackTrace();
-            }
-
-        } catch (SocketException | UnknownHostException e) {
-            //*************** lembrar de lidar com estas excecoes *****************
-            System.out.println("Deu merda");
-            e.printStackTrace();
         }
+        else throw new Exception("Diretoria não encontrada");
+
+        return filesInDir;
     }
+
+
+
+
+
 
     /*
-    Returns DatagramSocket with the first non-privileged available port.
-    Returns null if there isnt an available port
-     */
-    private DatagramSocket createDatagramSocket(){
-        boolean validPort = false;
-        DatagramSocket ds = null;
-        for(int port = 1024; !validPort && port <= 65535 ; port++){
-            try {
-                ds = new DatagramSocket(port);
-                validPort = true;
-            } catch (SocketException ignored) {}
+    //TODO: FLuxo de 2 portas, 1 para requests outra para Syns/Errors
+    public void sendRequests() throws IOException, OpcodeNotRecognizedException {
+        Set<String> rq = this.filesInDir.keySet();
+        DatagramSocket datagramSocket = null;
+        short port = 0;
+
+        for (String s : rq){
+            boolean flag = true;
+            //Gets local usable port
+            if(datagramSocket == null) {
+                datagramSocket = createDatagramSocket();
+                port = (short) datagramSocket.getPort();
+            }
+
+            while (flag) {
+                try {
+                    writeLock.lock();
+                    readLock.lock();
+                    ftr.requestRRWR(s, port, (short) 2, this.filesInDir.get(s));
+                } finally { writeLock.unlock(); }
+
+                DatagramPacket dp = new DatagramPacket(new byte[FTrapid.MAXSYNSIZE], FTrapid.MAXSYNSIZE);
+
+                try{
+
+                    ds.receive(dp);
+                }finally {readLock.unlock();}
+
+                short msg = ftr.analyseAnswer(dp);
+                if (ftr.verifyPackage(dp.getData()) == 1) System.out.println("Erro"); //(TODO) ocorreu um erro
+                else if (ftr.verifyPackage(dp.getData()) == 2) {
+                    //retribuiu um port
+                    //start worker thread (portLocal, portDoOutro)
+                    datagramSocket = null;
+                    flag=false;
+                }
+
+            }
         }
-        return ds;
+
+        //Closed if not needed
+        if(datagramSocket != null) datagramSocket.close();
     }
 
-    public static void generateFile(){
-        String filepath = "/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/teste.txt";
+    public void receiveRequest() throws IOException, OpcodeNotRecognizedException {
+        DatagramPacket dp = new DatagramPacket(new byte[FTrapid.MAXRDWRSIZE],FTrapid.MAXRDWRSIZE);
+        boolean flag = true;
+        DatagramSocket datagramSocket = null;
+        short port = 0;
+
+        while (flag) {
+            try {
+                ds.receive(dp);
+                RequestPackageInfo rq = ftr.analyseRequest(dp);
+
+                //Gets local usable port
+                if(datagramSocket == null) {
+                    datagramSocket = createDatagramSocket();
+                    port = (short) datagramSocket.getPort();
+                }
+
+                if (analyse(rq)) {
+                    ftr.answer((short) 1, port); //SYN
+                    //start worker thread
+                    datagramSocket = null;
+                } else ftr.answer((short) 2, (short) 404); //erro n quero receber esse pacote
+            }
+            catch (IOException e){flag = false;}
+            catch (SocketTimeoutException e){}
+        }
+    }
+    */
+
+    /* ******** Test Methods ******** */
+
+    public static void generateFile(String filepath, int length){
+        File file = new File(filepath);
+        try {
+            file.createNewFile();
+        } catch (IOException e) {
+            System.out.println("Couldnt create file");
+            return;
+        }
         FileOutputStream fops = null;
 
         try {
-            fops = new FileOutputStream(filepath);
+            fops = new FileOutputStream(file);
         } catch (FileNotFoundException e) {
             System.out.println("Error creating/opening file: " + filepath);
             return;
         }
         try {
-            byte[] buffer = new byte[FTrapid.MAXDATAPACKETSNUMBER*FTrapid.MAXDATA+16000];
+            byte[] buffer = new byte[length];
             Random rand = new Random();
             rand.nextBytes(buffer);
             fops.write(buffer);

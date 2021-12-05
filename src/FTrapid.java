@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -9,19 +10,21 @@ import java.time.LocalDateTime;
 public class FTrapid {
 
     private final DatagramSocket dS;
-    private final byte RDopcode = 1;
-    private final byte WRopcode = 2;
-    private final byte DATAopcode = 3;
-    private final byte ACKopcode = 4;
-    private final byte ERRopcode = 5;
-    private final byte SYNopcode = 6;
+    public static final byte RDopcode   = 1;
+    public static final byte WRopcode   = 2;
+    public static final byte DATAopcode = 3;
+    public static final byte ACKopcode  = 4;
+    public static final byte ERRopcode  = 5;
+    public static final byte SYNopcode  = 6;
+    public static final byte AUTopcode =7;
 
     public static final int MAXRDWRSIZE=514; // n sei
     public static final int MAXDATASIZE=1024;
     public static final int MAXDATA = 1019;
     public static final int MAXACKSIZE=3;
-    public static final int MAXERRORSIZE=3;
-    public static final int MAXSYNSIZE=3;
+    public static final int MAXERRORSIZE=514;
+    public static final int MAXSYNSIZE=514;
+    public static final int MAXAUTSIZE=514;
     public static final int MAXDATAPACKETSNUMBER = 32768;
     private static final int HEADERWRQ = 12;
 
@@ -126,93 +129,72 @@ public class FTrapid {
         return packet;
     }
 
+
     /*
      *   PACOTE DE ERROR:
      *
      *  OPCODE = 5
      *
-     *       1B        2B
-     *   | opcode | Error Code |
+     *       1B        2B                     NB         1B
+     *   | opcode | Error Code | FileName | 0 |
      *
      *  Será que precisa da String "Error Msg" ??
      *
      */
-    private byte[] createERRORPackage(short error) {
+    private byte[] createERRORPackage(short error,String filename) {
         byte[] packet;
         ByteBuffer out = ByteBuffer.allocate(MAXERRORSIZE);
         out.put(ERRopcode);
         out.putShort(error);
+        out.put(filename.getBytes(StandardCharsets.UTF_8));
         packet = out.array();
         return packet;
     }
+
 
     /*
      *   PACOTE DE SYN:
      *
      *  OPCODE = 6
      *
-     *       1B          2B
-     *   | opcode |     Port      |
+     *       1B          2B                 NB         1B
+     *   | opcode |     Port      | FileName | 0 |
      *
      *  Pacote para estabelecimento de conexão
      *
      */
 
-    private byte[] createSYNPackage(short port) {
+    private byte[] createSYNPackage(short port,String filename) {
         byte[] packet;
         ByteBuffer out = ByteBuffer.allocate(MAXSYNSIZE);
         out.put(SYNopcode);
         out.putShort(port);
+        out.put(filename.getBytes(StandardCharsets.UTF_8));
         packet = out.array();
         return packet;
     }
-
     /*
-    * 1º Organizar os ficheiros que temos na nossa pasta
-    * 2º Obter o lastModified data
-    * 3º Construir os pacotes com informação a cerca do estado da pasta
-    * 4º Enviar esta informação
-    * 5º Receber esta informação
-    * 6º Traduzir
-    * 7º Perceber que ficheiros serão transferidos e quais não
-    * 8º Criar queue de ficheiros a serem enviados
-    * 9º Começar a enviar e receber os ficheiros da mesma forma que o planeado?
-    *
-    *   -> Sincronizamos até 10 ficheiros de cada vez? Por causa dos ports?
-    *   -> Precisamos de uma sequencia de inicialização de FFSYNC, com thread pronta a receber a informaçao do outro lado
-    *   -> Precisamos de estrutura para guardar todas as informações dos ficheiros a serem transferidos
-    *   -> Como seria feito o Package de inicialização
-    *       - data representada precisava de pelo menos 12B : YYMMDDHHMMSS
-    *       - o nome seria uma string, sem limite... (pode dar problemas)
-    *           -devíamos definir um limite tipo 30B (senão erro), mas em java isto equivale a 15 carateres...
-    *
-    *       - precisava de um opcode na msm
-    *       - um Byte 0, para determinar o fim da String
-    *       - Portanto no final de contas ficamos com 12+30+2 = 44
-    *
-     *       - Considerando que as msgs podem no máximo ter 1024B
-    *
-    *           -Podiamos enviar 1024/44 = 23 ficheiros numa só mensagem...
-    *       - Podemos fazer um ciclo sempre a enviar as infos dos ficheiros até n existem mais ficheiros
-    *
-    *   ->Entretanto, uma thread precisa de estar a espera para receber a informação dos ficheiros do outro cliente
-    *       - quando receber um pacote terá de iniciar outra thread que preenche uma estrutura com os ficheiros a serem transferidos
-    *       - quando receber menos do que 23 ficheiros fecha a ligação ou esperamos pelo timeout
-    *
-    *   -> Depois de a queue de transferências ser feita, apenas precisamos de WRQ
-    *       - uma thread recebe os WRQ
-    *       - outra trata da queue e envia os seus WRQ
-    *
-    */
+     *   PACOTE DE AUT:
+     *
+     *  OPCODE = 7
+     *
+     *       1B          NB                        1B
+     *   | opcode |    PalavraPasse   | 0 |
+     *
+     *  Pacote para autenticação
+     *
+     */
 
-
-
-
-
-
-
-
-
+    private byte[] createAUTPackage(String password) {
+        byte[] packet;
+        ByteBuffer out = ByteBuffer.allocate(MAXAUTSIZE);
+        out.put(AUTopcode);
+        //podiamos codificar...
+        out.put(password.getBytes(StandardCharsets.UTF_8));
+        out.put((byte) 0);
+        packet = out.array();
+        return packet;
+    }
 
     ///////////////////////// Interpreta Packets ////////////////////////////7
 
@@ -235,9 +217,10 @@ public class FTrapid {
             data = out.getLong(3);
             out.position(11);
             while(out.get() != (byte) 0) length++;
-            byte[] temp = new byte[length];
-            out.get(temp, 1, length);
-            ret = new String(temp, StandardCharsets.UTF_8);
+            /*byte[] temp = new byte[length];
+            out.get(temp, 11, length); //offset tem de ser 0, pq é offset do array
+            ret = new String(temp, StandardCharsets.UTF_8);*/
+            ret = new String(packet,11,length,StandardCharsets.UTF_8); System.out.println(ret);
             info = new RequestPackageInfo(out.get(0),port,ret,data);
         }
         return info;
@@ -292,15 +275,47 @@ public class FTrapid {
      *
      */
 
-    private short readERRSYNPacket(byte[] packet){
+    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet){
         ByteBuffer out = ByteBuffer.allocate(packet.length);
+        ErrorSynPackageInfo ret = null;
         out.put(packet);
-        short ret = -1;
+        short msg = -1;
+        String filename=null;
+        int length=0;
         if (out.get(0) == ERRopcode || out.get(0)==SYNopcode) {
-            ret = out.getShort(1);
+            msg = out.getShort(1);
+            out.position(3);
+            while(out.get() != (byte) 0) length++;
+            byte[] temp = new byte[length];
+            out.get(temp, 3, length);
+            filename = new String(temp,StandardCharsets.UTF_8);
+            ret= new ErrorSynPackageInfo(msg,filename);
         }
         return ret;
     }
+
+    /*
+     *
+     * Intrepreta pacotes de AUT
+     *
+     */
+
+    private String readAUTPacket(byte[] packet){
+        ByteBuffer out = ByteBuffer.allocate(packet.length);
+        out.put(packet);
+        String password=null;
+        int length=0;
+        if (out.get(0) == AUTopcode) {
+            out.position(1);
+            while(out.get() != (byte) 0) length++;
+            byte[] temp = new byte[length];
+            out.get(temp, 1, length);
+            password = new String(temp,StandardCharsets.UTF_8);
+
+        }
+        return password;
+    }
+
 
     ///////////////////////// Transmition Control ///////////////////////
 
@@ -360,17 +375,20 @@ public class FTrapid {
         // 1º Start loop
         while(flag){
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
-
-            dS.receive(dPin);
-            // 2º Verificar Package Recebido e guardar
-            if (verifyPackage(dPin.getData()) == 3){
-                info = readDataPacket(dPin.getData());
-                if (info.getData().length < MAXDATA || info.getNrBloco() == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false; lastblock = (short) info.getData().length;}
-                packets[info.getNrBloco()]=info.getData();
-                DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()),MAXACKSIZE);
-                dS.send(dPout);
-            }
-
+            try {
+                dS.receive(dPin);
+                // 2º Verificar Package Recebido e guardar
+                if (verifyPackage(dPin.getData()) == 3) {
+                    info = readDataPacket(dPin.getData());
+                    if (info.getData().length < MAXDATA || info.getNrBloco() == (short) (MAXDATAPACKETSNUMBER - 1)) {
+                        flag = false;
+                        lastblock = (short) info.getData().length;
+                    }
+                    packets[info.getNrBloco()] = info.getData();
+                    DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
+                    dS.send(dPout);
+                }
+            }catch (SocketTimeoutException e){}
         }
         //preciso de verificar quais os pacotes que faltam
         int block =0;
@@ -388,10 +406,31 @@ public class FTrapid {
 
     ////////Methods for main Port////////////
 
+    public int authentication(String password) throws  IOException{
+        byte[] autP = createAUTPackage(password);
+        DatagramPacket dOUT = new DatagramPacket(autP,autP.length);
+        DatagramPacket dIN  = new DatagramPacket(new byte[MAXAUTSIZE],MAXAUTSIZE);
+        boolean flag = true;
+        int ret=-1;
+        while (flag) {
+            dS.send(dOUT);
+            try {
+                dS.receive(dIN);
+                String receivedP = readAUTPacket(dIN.getData());
+                if (password.compareTo(receivedP) == 0) {
+                    ret = 1;
+                }
+                flag= false;
+            } catch (SocketTimeoutException e) {}
+        }
+        return ret;
+    }
+
+
     //Mode:
     // - 1 to Read Request
     // - 2 to Write Request
-    public int requestRRWR(String filename,short port,short mode,long data) throws OpcodeNotRecognizedException, IOException {
+    public void requestRRWR(String filename,short port,short mode,long data) throws OpcodeNotRecognizedException, IOException {
         byte[] request =null;
         if (mode == 1)request= createRDWRPackage(filename,RDopcode,port,data);
         else if (mode == 2)request=  createRDWRPackage(filename,WRopcode,port,data);
@@ -400,38 +439,23 @@ public class FTrapid {
         byte[] msg;
         int ret=0;
 
-        while(flag) {
-            dS.send(new DatagramPacket(request, request.length));
-
-
-            //receives either an error or a SYN
-            msg = new byte[MAXERRORSIZE];
-            dS.receive(new DatagramPacket(msg, MAXERRORSIZE));
-
-            int opcode = verifyPackage(msg);
-            if (opcode == SYNopcode || opcode == ERRopcode) {
-                ret = readERRSYNPacket(msg);
-                if (opcode == 5) ret = -ret;
-                flag = false;
-            }
-        }
-        return ret;
+        dS.send(new DatagramPacket(request, request.length));
     }
     /*
-    * Retorna um pacote de informçao, pode vir a nulo
+    * Retorna um pacote de informaçao, pode vir a nulo
      */
     public RequestPackageInfo analyseRequest(DatagramPacket dp){
       return readRDWRPacket(dp.getData());
    }
 
-   public short analyseAnswer(DatagramPacket dp){return readERRSYNPacket(dp.getData());}
+   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp){return readERRSYNPacket(dp.getData());}
 
-    public void answer(short mode,short msg) throws OpcodeNotRecognizedException,IOException {
+    public void answer(short mode,short msg,String filename) throws OpcodeNotRecognizedException,IOException {
        // mode is 1 for error msg or 2 for syn
        // msg is either an error code or a port number
        byte[] packet;
-       if (mode == 1) packet= createERRORPackage(msg);
-       else if (mode ==2) packet = createSYNPackage(msg);
+       if (mode == 1) packet= createERRORPackage(msg,filename);
+       else if (mode ==2) packet = createSYNPackage(msg,filename);
        else throw new OpcodeNotRecognizedException();
 
         dS.send(new DatagramPacket(packet,packet.length));
@@ -444,6 +468,14 @@ public class FTrapid {
     */
     public short verifyPackage(byte[] data){
         return data[0];
+    }
+
+    public String translateError(short error){
+        if (error == 400) return "Connection Error";
+        else if (error == 401) return "Already owned File";
+        else if (error == 402) return "Aplication Error";
+        else if (error == 403) return "Package not recognized";
+        else return "";
     }
 
 }

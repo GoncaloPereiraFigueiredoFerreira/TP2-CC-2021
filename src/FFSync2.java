@@ -1,7 +1,9 @@
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.util.Scanner;
+import java.util.*;
 
 public class FFSync2 {
     /*
@@ -33,10 +35,6 @@ public class FFSync2 {
      */
 
     public static void main(String[] args) throws UnknownHostException {
-        teste2();
-    }
-
-    public static void teste2() throws UnknownHostException {
         //args[0] is the name of the folder to be shared
         //args[1] is the IP adress of the computer ...
         DatagramSocket ds = null;
@@ -48,50 +46,34 @@ public class FFSync2 {
         }
         ds.connect(InetAddress.getByName("localhost"),13333);
 
-        ConnectionWorker connectionWorker = new ConnectionWorker(false,false,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/teste2.txt",ds);
-        connectionWorker.run();
+        TransferWorker transferWorker = new TransferWorker(true,false,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/","test.m4a",ds);
+        transferWorker.run();
     }
-
-    public static void teste1(){
-        /*String[] args = new String[2];
+/*
+    public static void teste2() throws UnknownHostException {
+        String[] args = new String[2];
         Scanner sc = new Scanner(System.in);
-        System.out.print("Pasta:");
-        args[0]=sc.next();
+        args[0] = "/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/test.m4a";
+        //System.out.print("Pasta:");
+        //args[0]=sc.next();
         System.out.print("IP:");
-        args[1]=sc.next();*/
+        args[1]=sc.next();
 
-        //Socket used to handle requests
-        DatagramSocket ds;
-
+        //args[0] is the name of the folder to be shared
+        //args[1] is the IP adress of the computer ...
+        DatagramSocket ds = null;
         try {
-            ds = new DatagramSocket(65001);
-            ds.connect(InetAddress.getByName("localhost"),65000);
-            String oi = "ola";
-
-            try {
-                ds.send(new DatagramPacket(oi.getBytes(StandardCharsets.UTF_8),oi.getBytes(StandardCharsets.UTF_8).length));
-                System.out.println("Message sended");
-            } catch (IOException e) {
-                System.out.println("Couldnt send msg");
-                e.printStackTrace();
-            }
-
-            byte[] arr = new byte[64];
-            try {
-                System.out.println("Waiting for message");
-                ds.receive(new DatagramPacket(arr,64));
-                System.out.println("Got message");
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.out.println("Couldnt receive msg");
-            }
-            System.out.println(new String(arr,StandardCharsets.UTF_8));
-
-        } catch (SocketException | UnknownHostException e) {
-            //*************** lembrar de lidar com estas excecoes *****************
-            System.out.println("Deu merda");
-            e.printStackTrace();
+            ds = new DatagramSocket(12222);
+        } catch (SocketException e) {
+            System.out.println("Erro a criar socket");
+            return;
         }
+        ds.connect(InetAddress.getByName("localhost"),13333);
+
+        TransferWorker transferWorker = new TransferWorker(true,true,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/test1.m4a",ds);
+        transferWorker.run();
     }
+*/
+
 }
 
