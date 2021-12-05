@@ -217,10 +217,7 @@ public class FTrapid {
             data = out.getLong(3);
             out.position(11);
             while(out.get() != (byte) 0) length++;
-            /*byte[] temp = new byte[length];
-            out.get(temp, 11, length); //offset tem de ser 0, pq é offset do array
-            ret = new String(temp, StandardCharsets.UTF_8);*/
-            ret = new String(packet,11,length,StandardCharsets.UTF_8); System.out.println(ret);
+            ret = new String(packet,11,length,StandardCharsets.UTF_8);
             info = new RequestPackageInfo(out.get(0),port,ret,data);
         }
         return info;
@@ -408,12 +405,14 @@ public class FTrapid {
 
     ////////Methods for main Port////////////
 
-    public int authentication(String password) throws  IOException{
+    public int authentication(String password) throws  Exception{
         byte[] autP = createAUTPackage(password);
         DatagramPacket dOUT = new DatagramPacket(autP,autP.length);
         DatagramPacket dIN  = new DatagramPacket(new byte[MAXAUTSIZE],MAXAUTSIZE);
         boolean flag = true;
         int ret=-1;
+        int nTimeouts=30;
+        dS.setSoTimeout(1000);
         while (flag) {
             dS.send(dOUT);
             try {
@@ -423,7 +422,10 @@ public class FTrapid {
                     ret = 1;
                 }
                 flag= false;
-            } catch (SocketTimeoutException e) {}
+            } catch (SocketTimeoutException e) {
+                nTimeouts--;
+                if (nTimeouts==0) throw new Exception("Número de timeout's ultrupassado");
+            }
         }
         return ret;
     }

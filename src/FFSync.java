@@ -24,10 +24,66 @@ public class FFSync {
         }
     }*/
 
-    public static void main(String[] args) throws UnknownHostException {
-        teste1();
-    }
 
+
+    public static void main(String[] args) {
+        String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
+        String externalIP = args[1];
+        ReentrantLock readLock = new ReentrantLock();
+        ReentrantLock writeLock = new ReentrantLock();
+        Map<String,TransferWorker> requestsSent = new HashMap<>();
+        Map<String,TransferWorker> requestsReceived = new HashMap<>();
+        Map<String,Long> filesInDir;
+        DatagramSocket ds;
+
+        if (!testConnection()) {
+            System.out.println("Não existe conexão a internet");
+            return;
+        }
+
+        try {
+            filesInDir = fillDirMap(folderPath);
+            ds = new DatagramSocket(8888);
+            ds.connect(InetAddress.getByName(externalIP),8888);
+            ds.setSoTimeout(10000); //10 seg de timeout
+        }
+        catch (SocketException e){
+            System.out.println("Error opening connection socket");
+            return;
+        }
+        catch (Exception e) {
+            System.out.println(e.getMessage());
+            return;
+        }
+
+        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
+
+        ///Authentication Block
+        FTrapid ft = new FTrapid(ds);
+        Scanner sc = new Scanner(System.in);
+        System.out.print("Introduza a sua password, em ambas as maquinas: ");
+        String pass = sc.next();
+        try {
+            ft.authentication(pass);
+        } catch (Exception e) { //isto vai apanhar tanto a IOException como a exeção por limite
+            System.out.println("Erro na autenticação: " + e.getMessage());
+            return;
+        }
+        System.out.println("Sucesso na autenticação!!");
+
+        receiver.start();
+        sender.start();
+
+        try {
+            receiver.join();
+            sender.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+    }
+    
     public static void teste1(){
         String folderPath1 = "/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/", folderPath2 = "/home/alexandrof/UNI/3ano1sem/CC/FilesReceived/";
         Random random = new Random();
@@ -128,7 +184,14 @@ public class FFSync {
     }
 
 
-
+    public static boolean testConnection(){
+        try{
+            InetAddress s = InetAddress.getByName("www.google.com");
+            // System.out.println("Ligado!!!");
+            return true;
+        }
+        catch (IOException e) {/*System.out.println("Falhei!!!"); */return false;}
+    }
 
 
 

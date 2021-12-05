@@ -79,7 +79,8 @@ public class ConnectionWorker extends Thread {
     }
 
     //TODO: Delete file in the receiver client if there is an error while receiving
-
+    //TODO: Remove from map files that already exist(or were modified recently) in the order computer
+    //TODO: Implement authentication
     //returns false if we already own that file in a more recent version
     public boolean analyse(RequestPackageInfo rq){
         String filename = rq.getFilename();
@@ -313,14 +314,7 @@ public class ConnectionWorker extends Thread {
         else throw new Exception("Diretoria não encontrada");
     }
 
-    public boolean testConnection(){
-        try{
-            InetAddress s = InetAddress.getByName("www.google.com");
-           // System.out.println("Ligado!!!");
-            return true;
-        }
-        catch (IOException e) {/*System.out.println("Falhei!!!"); */return false;}
-    }
+
 
 
 
