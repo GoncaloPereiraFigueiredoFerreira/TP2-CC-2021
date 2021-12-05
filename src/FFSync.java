@@ -27,6 +27,11 @@ public class FFSync {
 
 
     public static void main(String[] args) {
+        /*try {
+            teste2();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }*/
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
         String externalIP = args[1];
         ReentrantLock readLock = new ReentrantLock();
@@ -43,8 +48,8 @@ public class FFSync {
 
         try {
             filesInDir = fillDirMap(folderPath);
-            ds = new DatagramSocket(8888);
-            ds.connect(InetAddress.getByName(externalIP),8888);
+            ds = new DatagramSocket(9999);
+            ds.connect(InetAddress.getByName(externalIP),9999);
             ds.setSoTimeout(10000); //10 seg de timeout
         }
         catch (SocketException e){
@@ -65,8 +70,12 @@ public class FFSync {
         System.out.print("Introduza a sua password, em ambas as maquinas: ");
         String pass = sc.next();
         try {
-            ft.authentication(pass);
-        } catch (Exception e) { //isto vai apanhar tanto a IOException como a exeção por limite
+           if (ft.authentication(pass)!=1) {
+               System.out.println("Palavra passe errada");
+               return;
+           }
+        } catch (Exception e) { //isto vai apanhar tanto a IOException como a exceção por limite
+            e.printStackTrace();
             System.out.println("Erro na autenticação: " + e.getMessage());
             return;
         }
@@ -81,9 +90,8 @@ public class FFSync {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
     }
-    
+
     public static void teste1(){
         String folderPath1 = "/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/", folderPath2 = "/home/alexandrof/UNI/3ano1sem/CC/FilesReceived/";
         Random random = new Random();
@@ -148,14 +156,14 @@ public class FFSync {
         //args[1] is the IP adress of the computer ...
         DatagramSocket ds = null;
         try {
-            ds = new DatagramSocket(13333);
+            ds = new DatagramSocket(12222);
         } catch (SocketException e) {
             System.out.println("Erro a criar socket");
             return;
         }
-        ds.connect(InetAddress.getByName("localhost"),12222);
+        ds.connect(InetAddress.getByName("2.81.198.146"),13333);
 
-        TransferWorker transferWorker = new TransferWorker(false,true,"/home/alexandrof/UNI/3ano1sem/CC/TP2-CC-2021/","test1.m4a",ds);
+        TransferWorker transferWorker = new TransferWorker(false,true,"/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/","smth2.txt",ds);
         transferWorker.run();
     }
 
@@ -202,7 +210,7 @@ public class FFSync {
         DatagramSocket datagramSocket = null;
         short port = 0;
 
-        for (String s : rq){
+        for (String s : rq){    
             boolean flag = true;
             //Gets local usable port
             if(datagramSocket == null) {

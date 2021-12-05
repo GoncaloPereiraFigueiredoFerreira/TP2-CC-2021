@@ -160,6 +160,7 @@ public class TransferWorker extends Thread{
             if(receiver) {
                 System.out.println("RECEIVER\nLocal: " + ds.getLocalAddress().getHostName() + " " + ds.getLocalPort() + "\nExternalPort: " + ds.getInetAddress() + " " + ds.getPort()); //(PRINT)
                 runReceiveFile();
+                System.out.println("Received file!");
             }
             else {
                 //(CHECK) receive syn

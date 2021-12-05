@@ -301,16 +301,12 @@ public class FTrapid {
     private String readAUTPacket(byte[] packet){
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         out.put(packet);
-        String password=null;
-        int length=0;
+        String password = null;
+        int length = 0;
         if (out.get(0) == AUTopcode) {
             out.position(1);
             while(out.get() != (byte) 0) length++;
-            byte[] temp = new byte[length];
-            out.position(1);
-            out.get(temp, 0, length);
-            password = new String(temp,StandardCharsets.UTF_8);
-
+            password = new String(packet, 1, length, StandardCharsets.UTF_8);
         }
         return password;
     }
@@ -411,8 +407,8 @@ public class FTrapid {
         DatagramPacket dIN  = new DatagramPacket(new byte[MAXAUTSIZE],MAXAUTSIZE);
         boolean flag = true;
         int ret=-1;
-        int nTimeouts=30;
-        dS.setSoTimeout(1000);
+        int nTimeouts=60;
+        dS.setSoTimeout(500);
         while (flag) {
             dS.send(dOUT);
             try {
@@ -424,9 +420,10 @@ public class FTrapid {
                 flag= false;
             } catch (SocketTimeoutException e) {
                 nTimeouts--;
-                if (nTimeouts==0) throw new Exception("Número de timeout's ultrupassado");
+                if (nTimeouts==0) throw new Exception("Número de timeout's ultrapassado");
             }
         }
+        dS.setSoTimeout(15000);
         return ret;
     }
 
