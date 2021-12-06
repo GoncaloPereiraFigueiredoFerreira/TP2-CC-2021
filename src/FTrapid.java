@@ -20,13 +20,13 @@ public class FTrapid {
 
     public static final int MAXRDWRSIZE=514; // n sei
     public static final int MAXDATASIZE=1024;
-    public static final int MAXDATA = 1019;
+    public static final int MAXDATA = 1015;
     public static final int MAXACKSIZE=3;
     public static final int MAXERRORSIZE=514;
     public static final int MAXSYNSIZE=514;
     public static final int MAXAUTSIZE=514;
     public static final int MAXDATAPACKETSNUMBER = 32768;
-    private static final int HEADERWRQ = 12;
+    private static final int HEADERWRQ = 16;
 
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
@@ -35,7 +35,7 @@ public class FTrapid {
     //DatagraSocket Sender Size =  65535 B ≃ 64KB
     //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
 
-    //TODO: Implementar pacotes de autenticaçao/ inicialização
+    //TODO: Implementar hashcodes
     /////////////////////// Definição dos pacotes///////////////////////////
 
     /*
@@ -44,8 +44,8 @@ public class FTrapid {
      *   OPCODE = 1 / 2
      *
      *
-     *       1B         2B           8B                    String          1B
-     *    | opcode |  Porta  |     Long Data      |      Filename      |   0   |
+     *       1B         2B           8B                    String          1B         4B
+     *    | opcode |  Porta  |     Long Data      |      Filename      |   0   |    HashCode    |
      *
      *
      */
@@ -59,6 +59,13 @@ public class FTrapid {
         out.putLong(data);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
+
+        //Create HashCode
+        StringBuilder sb = new StringBuilder();
+        sb.append(opcode).append(port).append(data).append(filename).append((byte)0);
+        int hashcode = sb.toString().hashCode();
+        out.putInt(hashcode);
+
         packet = out.array();
         return packet;
     }
@@ -68,8 +75,8 @@ public class FTrapid {
     *
     *   OPCODE = 3
     *
-    *       1B        2B        2B            N Bytes < 1019
-    *   | opcode | nº bloco |  length    |        Dados         |
+    *       1B        2B        2B            N Bytes < 1015           4B
+    *   | opcode | nº bloco |  length    |        Dados         |   HashCode    |
     *
     *   Não precisa de 0?
     *
@@ -96,12 +103,22 @@ public class FTrapid {
             // packetLength max = MAXDATA
             packetLength = (short) Integer.min(data.length - ofset,MAXDATA);
             //header de DATA = 5
-            ByteBuffer out = ByteBuffer.allocate(5+packetLength);
+            ByteBuffer out = ByteBuffer.allocate(5+packetLength+4);
             out.put(DATAopcode);
             out.putShort((short) i);
             out.putShort(packetLength);
+            ByteBuffer temp = ByteBuffer.allocate(packetLength);
+            temp.put(data,ofset,packetLength);
             out.put(data,ofset,packetLength);
             ofset+=packetLength;
+
+            //Create HashCode
+            String dados = new String(temp.array(),StandardCharsets.UTF_8);
+            StringBuilder sb = new StringBuilder();
+            sb.append(DATAopcode).append(i).append(packetLength).append(dados);
+            int hashcode = sb.toString().hashCode();
+            out.putInt(hashcode);
+
             packets[i]=out.array();
 
 
@@ -118,6 +135,7 @@ public class FTrapid {
      *       1B        2B
      *   | opcode | nº bloco |
      *
+     * Ponho HashCode??
      */
 
     private byte[] createACKPackage(short block) {
@@ -135,10 +153,10 @@ public class FTrapid {
      *
      *  OPCODE = 5
      *
-     *       1B        2B                     NB         1B
-     *   | opcode | Error Code | FileName | 0 |
+     *       1B        2B          NB       1B     4B
+     *   | opcode | Error Code | FileName | 0 |  HashCode  |
      *
-     *  Será que precisa da String "Error Msg" ??
+     *
      *
      */
     private byte[] createERRORPackage(short error,String filename) {
@@ -147,6 +165,14 @@ public class FTrapid {
         out.put(ERRopcode);
         out.putShort(error);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
+
+        //Create hashcode
+        StringBuilder sb = new StringBuilder();
+        sb.append(ERRopcode).append(error).append(filename).append((byte) 0);
+        int hashcode = sb.toString().hashCode();
+
+        out.putInt(hashcode);
+
         packet = out.array();
         return packet;
     }
@@ -157,8 +183,8 @@ public class FTrapid {
      *
      *  OPCODE = 6
      *
-     *       1B          2B                 NB         1B
-     *   | opcode |     Port      | FileName | 0 |
+     *       1B          2B            NB      1B    4B
+     *   | opcode |     Port      | FileName | 0 | HashCode  |
      *
      *  Pacote para estabelecimento de conexão
      *
@@ -170,6 +196,13 @@ public class FTrapid {
         out.put(SYNopcode);
         out.putShort(port);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
+
+        //Create hashcode
+        StringBuilder sb = new StringBuilder();
+        sb.append(SYNopcode).append(port).append(filename).append((byte) 0);
+        int hashcode = sb.toString().hashCode();
+        out.putInt(hashcode);
+
         packet = out.array();
         return packet;
     }
@@ -178,8 +211,8 @@ public class FTrapid {
      *
      *  OPCODE = 7
      *
-     *       1B          NB                        1B
-     *   | opcode |    PalavraPasse   | 0 |
+     *       1B          NB            1B     4B
+     *   | opcode |    PalavraPasse   | 0 | HashCode  |
      *
      *  Pacote para autenticação
      *
@@ -192,6 +225,13 @@ public class FTrapid {
         //podiamos codificar...
         out.put(password.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
+
+        //Create hashcode
+        StringBuilder sb = new StringBuilder();
+        sb.append(AUTopcode).append(password).append((byte) 0);
+        int hashcode = sb.toString().hashCode();
+        out.putInt(hashcode);
+
         packet = out.array();
         return packet;
     }
@@ -204,20 +244,34 @@ public class FTrapid {
     *
     */
 
-    private RequestPackageInfo readRDWRPacket(byte[] packet){
+    private RequestPackageInfo readRDWRPacket(byte[] packet) throws IntegrityException {
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         out.put(packet);
         String ret = null;
         short port = -1;
         long data = -1;
+        int hash = -1;
         RequestPackageInfo info = null;
         int length=0;
         if (out.get(0) == WRopcode || out.get(0)==RDopcode) {
             port = out.getShort(1);
             data = out.getLong(3);
             out.position(11);
-            while(out.get() != (byte) 0) length++;
+            while(length<(MAXRDWRSIZE - 16) && out.get() != (byte) 0) length++;
+            if (length == (MAXRDWRSIZE - 16)) throw new IntegrityException();
+
             ret = new String(packet,11,length,StandardCharsets.UTF_8);
+
+            out.position(11+length+1);
+            hash =out.getInt();
+
+            //verify Integrity
+            StringBuilder sb = new StringBuilder();
+            sb.append(out.get(0)).append(port).append(data).append(ret).append(out.get(11+length));
+            int generatedHash= sb.toString().hashCode();
+            if (hash != generatedHash) throw new IntegrityException();
+
+
             info = new RequestPackageInfo(out.get(0),port,ret,data);
         }
         return info;
@@ -229,13 +283,14 @@ public class FTrapid {
      * Intrepreta pacotes de DATA
      *
      */
-    private DataPackageInfo readDataPacket(byte[] data){
+    private DataPackageInfo readDataPacket(byte[] data) throws IntegrityException {
         ByteBuffer out = ByteBuffer.allocate(MAXDATASIZE);
         out.put(data,0,data.length);
         out.position(0);
         byte opcode = out.get(0);
         byte[] msg;
         DataPackageInfo par = null;
+        int hash;
 
         if (opcode == DATAopcode){
             short block = out.getShort(1);
@@ -244,6 +299,18 @@ public class FTrapid {
             ByteBuffer tmp = ByteBuffer.allocate(length);
             tmp.put(data,5,length);
             msg=tmp.array();
+            hash = tmp.getInt(5+length);
+
+
+            //verify integrity
+            StringBuilder sb = new StringBuilder();
+            sb.append(opcode).append(block).append(length).append(new String(msg,StandardCharsets.UTF_8));
+            int generatedHash = sb.toString().hashCode();
+            if (generatedHash !=hash) throw new IntegrityException();
+
+
+
+
             par = new DataPackageInfo(block,msg);
 
         }
@@ -272,21 +339,31 @@ public class FTrapid {
      *
      */
 
-    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet){
+    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException {
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         ErrorSynPackageInfo ret = null;
         out.put(packet);
         short msg = -1;
         String filename=null;
         int length=0;
+        int hash;
         if (out.get(0) == ERRopcode || out.get(0)==SYNopcode) {
             msg = out.getShort(1);
             out.position(3);
-            while(out.get() != (byte) 0) length++;
+            while(length < (MAXERRORSIZE -8) && out.get() != (byte) 0) length++;
+            if (length == (MAXERRORSIZE-8)) throw new IntegrityException();
             byte[] temp = new byte[length];
             out.position(3);
             out.get(temp, 0, length);
             filename = new String(temp,StandardCharsets.UTF_8);
+            hash = out.getInt(3+length+1);
+
+            //verify integrity
+            StringBuilder sb = new StringBuilder();
+            sb.append(out.get(0)).append(msg).append(filename).append(3+length);
+            int generatedHash = sb.toString().hashCode();
+            if (generatedHash !=hash) throw new IntegrityException();
+
             ret= new ErrorSynPackageInfo(msg,filename);
         }
         return ret;
@@ -298,15 +375,24 @@ public class FTrapid {
      *
      */
 
-    private String readAUTPacket(byte[] packet){
+    private String readAUTPacket(byte[] packet) throws IntegrityException {
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         out.put(packet);
         String password = null;
         int length = 0;
+        int hash =0;
         if (out.get(0) == AUTopcode) {
             out.position(1);
-            while(out.get() != (byte) 0) length++;
+            while(length<MAXAUTSIZE-6 && out.get() != (byte) 0) length++;
             password = new String(packet, 1, length, StandardCharsets.UTF_8);
+            out.position(1+length+1);
+            hash=out.getInt();
+
+            //verify integrity
+            StringBuilder sb = new StringBuilder();
+            sb.append(out.get(0)).append(password).append(out.get(1+length));
+            int generatedHash = sb.toString().hashCode();
+            if (hash != generatedHash) throw new IntegrityException();
         }
         return password;
     }
@@ -362,6 +448,7 @@ public class FTrapid {
      *     3. send ACK
      *     4. verify size, se o size < 514, transmition over, senao: 1.
      */
+    //TODO: Tenho de tirar ou mudar o nome do verify package
     public byte[] receiveData() throws IOException {
         byte[] msg;
         byte [][] packets = new byte[MAXDATAPACKETSNUMBER][];
@@ -388,6 +475,7 @@ public class FTrapid {
                     System.out.println("ReceiveData: Sent ACK");
                 }
             }catch (SocketTimeoutException e){System.out.println("ReceiveData: TimedOut!");}
+            catch (IntegrityException i){System.out.println(i.getMessage());}
         }
         //preciso de verificar quais os pacotes que faltam
         int block =0;
@@ -425,7 +513,7 @@ public class FTrapid {
             } catch (SocketTimeoutException e) {
                 nTimeouts--;
                 if (nTimeouts==0) throw new Exception("Número de timeout's ultrapassado");
-            }
+            }catch (IntegrityException e){System.out.println(e.getMessage());}
         }
         dS.setSoTimeout(15000);
         return ret;
@@ -449,11 +537,11 @@ public class FTrapid {
     /*
     * Retorna um pacote de informaçao, pode vir a nulo
      */
-    public RequestPackageInfo analyseRequest(DatagramPacket dp){
+    public RequestPackageInfo analyseRequest(DatagramPacket dp) throws IntegrityException {
       return readRDWRPacket(dp.getData());
    }
 
-   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp){return readERRSYNPacket(dp.getData());}
+   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException {return readERRSYNPacket(dp.getData());}
 
     public void answer(short mode,short msg,String filename) throws OpcodeNotRecognizedException,IOException {
        // mode is 1 for error msg or 2 for syn
