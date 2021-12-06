@@ -5,6 +5,7 @@ import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 
 
 public class FTrapid {
@@ -196,14 +197,18 @@ public class FTrapid {
         out.put(SYNopcode);
         out.putShort(port);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
-
+        System.out.println("create filename length:" + filename.length());
+        System.out.println("create filename bytes length:" + filename.getBytes(StandardCharsets.UTF_8).length);
         //Create hashcode
         StringBuilder sb = new StringBuilder();
         sb.append(SYNopcode).append(port).append(filename).append((byte) 0);
+        System.out.println("create filename: \"" + filename + "\"");
         int hashcode = sb.toString().hashCode();
+        out.put((byte) 0);
         out.putInt(hashcode);
 
         packet = out.array();
+        System.out.println("create packet: " + Arrays.toString(packet));
         return packet;
     }
     /*
@@ -340,6 +345,7 @@ public class FTrapid {
      */
 
     private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException {
+        System.out.println("read packet: " + Arrays.toString(packet));
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         ErrorSynPackageInfo ret = null;
         out.put(packet);
@@ -350,14 +356,14 @@ public class FTrapid {
         if (out.get(0) == ERRopcode || out.get(0)==SYNopcode) {
             msg = out.getShort(1);
             out.position(3);
-            while(length < (MAXERRORSIZE -8) && out.get() != (byte) 0) length++;
-            if (length == (MAXERRORSIZE-8)) throw new IntegrityException();
-            byte[] temp = new byte[length];
-            out.position(3);
-            out.get(temp, 0, length);
-            filename = new String(temp,StandardCharsets.UTF_8);
+            while(length <= (MAXERRORSIZE -8) && out.get() != (byte) 0) length++;
+            if (length > (MAXERRORSIZE-8)) throw new IntegrityException();
+            //byte[] temp = new byte[length];
+            //out.position(3);
+            //out.get(temp, 0, length);
+            filename = new String(packet,3,length,StandardCharsets.UTF_8);
             hash = out.getInt(3+length+1);
-
+            System.out.println("read filename: \"" + filename + "\"");
             //verify integrity
             StringBuilder sb = new StringBuilder();
             sb.append(out.get(0)).append(msg).append(filename).append(out.get(3+length));
