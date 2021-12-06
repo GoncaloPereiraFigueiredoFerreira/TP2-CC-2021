@@ -299,7 +299,7 @@ public class FTrapid {
             ByteBuffer tmp = ByteBuffer.allocate(length);
             tmp.put(data,5,length);
             msg=tmp.array();
-            hash = tmp.getInt(5+length);
+            hash = out.getInt(5+length);
 
 
             //verify integrity
@@ -360,7 +360,7 @@ public class FTrapid {
 
             //verify integrity
             StringBuilder sb = new StringBuilder();
-            sb.append(out.get(0)).append(msg).append(filename).append(3+length);
+            sb.append(out.get(0)).append(msg).append(filename).append(out.get(3+length));
             int generatedHash = sb.toString().hashCode();
             if (generatedHash !=hash) throw new IntegrityException();
 
