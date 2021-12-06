@@ -1,7 +1,4 @@
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.*;
@@ -27,13 +24,12 @@ public class FFSync {
 
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException, ClassNotFoundException {
         /*try {
             teste2();
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }*/
-
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
         String externalIP = args[1];
         ReentrantLock readLock = new ReentrantLock();
@@ -43,13 +39,13 @@ public class FFSync {
         Map<String,Long> filesInDir;
         DatagramSocket ds;
 
+        //Connection verifications
         if (!testConnection(externalIP)) {
-            System.out.println("Não existe conexão a internet");
+            System.out.println("Couldn't find the other client!");
             return;
         }
 
         try {
-            filesInDir = fillDirMap(folderPath);
             ds = new DatagramSocket(9999);
             ds.connect(InetAddress.getByName(externalIP),9999);
             ds.setSoTimeout(10000); //10 seg de timeout
@@ -63,16 +59,13 @@ public class FFSync {
             return;
         }
 
-        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
-        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
-
         ///Authentication Block
-        FTrapid ft = new FTrapid(ds);
+        FTrapid ftr = new FTrapid(ds);
         Scanner sc = new Scanner(System.in);
         System.out.print("Introduza a sua password, em ambas as maquinas: ");
         String pass = sc.next();
         try {
-           if (ft.authentication(pass)!=1) {
+           if (ftr.authentication(pass)!=1) {
                System.out.println("Palavra passe errada");
                return;
            }
@@ -82,6 +75,18 @@ public class FFSync {
             return;
         }
         System.out.println("Sucesso na autenticação!!");
+
+        //Verifies the files that are required to send
+        if((filesInDir = fillDirMap(folderPath)) == null) {
+            System.out.println("Not a directory!");
+            return;
+        }
+        ftr.sendData(serialize((HashMap<String,Long>) filesInDir));
+        Map<String,Long> filesInDirReceived = deserialize(ftr.receiveData());
+        analyse(filesInDir,filesInDirReceived);
+
+        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
 
         receiver.start();
         sender.start();
@@ -113,7 +118,7 @@ public class FFSync {
 
     /* ******** Auxiliar Methods ******** */
 
-    public static Map<String,Long> fillDirMap(String path) throws Exception {
+    public static Map<String,Long> fillDirMap(String path){
         Map<String,Long> filesInDir = new HashMap<>();
         File dir = new File(path);
 
@@ -129,7 +134,7 @@ public class FFSync {
                 }
             }
         }
-        else throw new Exception("Diretoria não encontrada");
+        else return null;
 
         return filesInDir;
     }
@@ -142,6 +147,66 @@ public class FFSync {
             return true;
         }
         catch (IOException e) {/*System.out.println("Falhei!!!"); */return false;}
+    }
+
+    public static byte[] serialize(HashMap<String,Long> filesInDir) throws IOException {
+        byte[] bytes;
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(byteOut);
+
+        out.writeObject(filesInDir);
+        /*
+        out.writeInt(filesInDir.size());
+        for(Map.Entry<String,Long> entry : filesInDir.entrySet()) {
+            out.writeUTF(entry.getKey());
+            out.writeLong(entry.getValue());
+        }*/
+        bytes = byteOut.toByteArray();
+        out.close();
+        byteOut.close();
+
+        return bytes;
+    }
+/*
+    public static List<AbstractMap.SimpleEntry<String,Long>> deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
+        List<AbstractMap.SimpleEntry<String,Long>> list = new ArrayList<>();
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
+        ObjectInputStream in = new ObjectInputStream(byteIn);
+
+        int nrOfFiles = in.readInt();
+
+        for(int i = 0; i < nrOfFiles; i++) list.add(new AbstractMap.SimpleEntry<String,Long>(in.readUTF(),in.readLong()) );
+
+        byteIn.close();
+        in.close();
+
+        return list;
+    }*/
+
+    public static Map<String,Long> deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
+        Map<String,Long> map;
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
+        ObjectInputStream in = new ObjectInputStream(byteIn);
+
+        map = (HashMap<String,Long>) in.readObject();
+
+        //for(int i = 0; i < nrOfFiles; i++) list.add(new AbstractMap.SimpleEntry<String,Long>(in.readUTF(),in.readLong()) );
+
+        byteIn.close();
+        in.close();
+
+        return map;
+    }
+
+    public static void analyse(Map<String,Long> filesInDir, Map<String,Long> filesInDirReceived) {
+        String filename;
+
+        for(Map.Entry<String,Long> entry : filesInDirReceived.entrySet()) {
+            filename = entry.getKey();
+            //Checks for the existence of the file. If the file exists, compares the dates when they were last modified.
+            if (filesInDir.containsKey(filename) && filesInDir.get(filename) < entry.getValue())
+                filesInDir.remove(filename);
+        }
     }
 
     /* ******** Test Methods ******** */
