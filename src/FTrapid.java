@@ -336,12 +336,14 @@ public class FTrapid {
 
             DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length);
             dS.send(dPout);
+            System.out.println("SendData: Sent Data");
 
             // 3º Esperar por ACK // Esta parte deveria ser feita por outra thread
             DatagramPacket dPin = new DatagramPacket(new byte[3],3);
 
             //fica locked em caso de não receber nada (deveria ter um timeout) socket.setSoTimeout(10*1000);
             dS.receive(dPin);
+            System.out.println("SendData: Received ACK");
 
             // 4º Traduzir Ack
             if (this.verifyPackage(dPin.getData())==ACKopcode) {
@@ -372,6 +374,7 @@ public class FTrapid {
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
             try {
                 dS.receive(dPin);
+                System.out.println("ReceiveData: Received Data");
                 // 2º Verificar Package Recebido e guardar
                 if (verifyPackage(dPin.getData()) == 3) {
                     info = readDataPacket(dPin.getData());
@@ -382,8 +385,9 @@ public class FTrapid {
                     packets[info.getNrBloco()] = info.getData();
                     DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
                     dS.send(dPout);
+                    System.out.println("ReceiveData: Sent ACK");
                 }
-            }catch (SocketTimeoutException e){}
+            }catch (SocketTimeoutException e){System.out.println("ReceiveData: TimedOut!");}
         }
         //preciso de verificar quais os pacotes que faltam
         int block =0;
@@ -460,7 +464,6 @@ public class FTrapid {
        else throw new OpcodeNotRecognizedException();
 
         dS.send(new DatagramPacket(packet,packet.length));
-
    }
 
    /*

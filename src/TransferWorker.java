@@ -154,7 +154,9 @@ public class TransferWorker extends Thread{
             }
             else {
                 System.out.println("Sender\nLocal: " + ds.getLocalAddress().getHostName() + " " + ds.getLocalPort() + "\nExternalPort: " + ds.getInetAddress() + " " + ds.getPort());//(PRINT)
-                runSendFile(); }
+                runSendFile();
+                System.out.println("File sent!");
+            }
         }
         else {
             if(receiver) {
