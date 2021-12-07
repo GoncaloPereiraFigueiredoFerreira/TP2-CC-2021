@@ -119,12 +119,17 @@ public class TransferWorker extends Thread{
             String[] ar = FFSync.pathToArray(filename);
             StringBuilder sb = new StringBuilder();
             sb.append(folderPath);
-            for (int i =0; i<ar.length;i++)sb.append(separator).append(ar[i]);
+            for (int i =0; i<ar.length;i++){
+                if (i!=0&&i== ar.length-1) {
+                    File f2 = new File(sb.toString());
+                    f2.mkdirs();
+                }
+                sb.append(separator).append(ar[i]);
 
-            File f2 = new File(sb.toString());
-            f2.mkdirs();
+            }
 
-            fops = new FileOutputStream(f2);
+
+            fops = new FileOutputStream(sb.toString());
         } catch (FileNotFoundException e) {
             System.out.println("Error creating/opening file: " + filename);
 
