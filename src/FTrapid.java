@@ -530,16 +530,13 @@ public class FTrapid {
     // - 1 to Read Request
     // - 2 to Write Request
     public void requestRRWR(String filename,short port,short mode,long data) throws OpcodeNotRecognizedException, IOException {
-        byte[] request =null;
-        if (mode == 1)request= createRDWRPackage(filename,RDopcode,port,data);
-        else if (mode == 2)request=  createRDWRPackage(filename,WRopcode,port,data);
+        byte[] request;
+        if (mode == 1) request = createRDWRPackage(filename,RDopcode,port,data);
+        else if (mode == 2) request = createRDWRPackage(filename,WRopcode,port,data);
         else throw new OpcodeNotRecognizedException();
-        boolean flag=true;
-        byte[] msg;
-        int ret=0;
-
         dS.send(new DatagramPacket(request, request.length));
     }
+
     /*
     * Retorna um pacote de informaçao, pode vir a nulo
      */
@@ -556,8 +553,7 @@ public class FTrapid {
        if (mode == 1) packet= createERRORPackage(msg,filename);
        else if (mode ==2) packet = createSYNPackage(msg,filename);
        else throw new OpcodeNotRecognizedException();
-
-        dS.send(new DatagramPacket(packet,packet.length));
+       dS.send(new DatagramPacket(packet,packet.length));
    }
 
    /*

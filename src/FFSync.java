@@ -24,12 +24,7 @@ public class FFSync {
 
 
 
-    public static void main(String[] args) throws IOException, ClassNotFoundException {
-        /*try {
-            teste2();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }*/
+    public static void main(String[] args) {
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
         String externalIP = args[1];
         ReentrantLock readLock = new ReentrantLock();
@@ -76,17 +71,35 @@ public class FFSync {
         }
         System.out.println("Sucesso na autenticação!!");
 
-        //Verifies the files that are required to send
-        if((filesInDir = fillDirMap(folderPath)) == null) {
-            System.out.println("Not a directory!");
+        try {
+            //Fills the map with the files present in the given directory
+            if((filesInDir = fillDirMap(folderPath)) == null) {
+                System.out.println("Not a directory!");
+                return;
+            }
+
+            Map<String, Long> filesInDirReceived;
+
+            //Decides the order in which it will receive the map of files from the other client
+            if(ds.getLocalAddress().getHostAddress().compareTo(externalIP) < 0) {
+                ftr.sendData(serialize((HashMap<String, Long>) filesInDir));
+                filesInDirReceived = deserialize(ftr.receiveData());
+            }
+            else{
+                filesInDirReceived = deserialize(ftr.receiveData());
+                ftr.sendData(serialize((HashMap<String, Long>) filesInDir));
+            }
+
+            //Corrects the map of files that need to be sent
+            analyse(filesInDir,filesInDirReceived);
+        }catch (IOException | ClassNotFoundException e) {
+            System.out.println("Error sending/receiving list of files!");
             return;
         }
-        ftr.sendData(serialize((HashMap<String,Long>) filesInDir));
-        Map<String,Long> filesInDirReceived = deserialize(ftr.receiveData());
-        analyse(filesInDir,filesInDirReceived);
 
-        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
-        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, readLock, writeLock, requestsSent, requestsReceived);
+
+        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, ftr, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, ftr, readLock, writeLock, requestsSent, requestsReceived);
 
         receiver.start();
         sender.start();
@@ -99,29 +112,13 @@ public class FFSync {
         }
     }
 
-    public static void teste2() throws UnknownHostException {
-        //args[0] is the name of the folder to be shared
-        //args[1] is the IP adress of the computer ...
-        DatagramSocket ds = null;
-        try {
-            ds = new DatagramSocket(32000);
-        } catch (SocketException e) {
-            System.out.println("Erro a criar socket");
-            return;
-        }
-        ds.connect(InetAddress.getByName("172.26.94.237"),31000);
-
-        TransferWorker transferWorker = new TransferWorker(true,false,"/home/alexandrof/UNI/3ano1sem/CC/FilesGenerated/","test2.m4a",ds);
-        transferWorker.run();
-    }
-
-
     /* ******** Auxiliar Methods ******** */
+
 
     public static Map<String,Long> fillDirMap(String path){
         Map<String,Long> filesInDir = new HashMap<>();
         File dir = new File(path);
-
+        System.out.println(File.separator);
         if (dir.isDirectory()){
             File[] fs = dir.listFiles();
             if (fs != null) {
@@ -131,6 +128,10 @@ public class FFSync {
                         String name = f.getName();
                         filesInDir.put(name, data);
                     }
+                    else if (f.isDirectory()){
+                        Map<String,Long> filesInDir2 = fillDirMap(f.getPath());
+                        filesInDir2.forEach((k,v)-> filesInDir.put(f.getName()+"/"+k,v)); //so esta a funcionar para windows
+                    }
                 }
             }
         }
@@ -139,6 +140,9 @@ public class FFSync {
         return filesInDir;
     }
 
+    public static String[] pathToArray(String path){
+        return path.split("/");
+    }
 
     public static boolean testConnection(String externalIP){
         try{
@@ -155,33 +159,13 @@ public class FFSync {
         ObjectOutputStream out = new ObjectOutputStream(byteOut);
 
         out.writeObject(filesInDir);
-        /*
-        out.writeInt(filesInDir.size());
-        for(Map.Entry<String,Long> entry : filesInDir.entrySet()) {
-            out.writeUTF(entry.getKey());
-            out.writeLong(entry.getValue());
-        }*/
+
         bytes = byteOut.toByteArray();
         out.close();
         byteOut.close();
 
         return bytes;
     }
-/*
-    public static List<AbstractMap.SimpleEntry<String,Long>> deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
-        List<AbstractMap.SimpleEntry<String,Long>> list = new ArrayList<>();
-        ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
-        ObjectInputStream in = new ObjectInputStream(byteIn);
-
-        int nrOfFiles = in.readInt();
-
-        for(int i = 0; i < nrOfFiles; i++) list.add(new AbstractMap.SimpleEntry<String,Long>(in.readUTF(),in.readLong()) );
-
-        byteIn.close();
-        in.close();
-
-        return list;
-    }*/
 
     public static Map<String,Long> deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
         Map<String,Long> map;
@@ -190,14 +174,14 @@ public class FFSync {
 
         map = (HashMap<String,Long>) in.readObject();
 
-        //for(int i = 0; i < nrOfFiles; i++) list.add(new AbstractMap.SimpleEntry<String,Long>(in.readUTF(),in.readLong()) );
-
         byteIn.close();
         in.close();
 
         return map;
     }
 
+    //Receives 2 maps, one containing all the files present in the machine's given folder, and another containing all the files the other machine's can share
+    //Removes all the files from the first map, that match the name of a file from the other machine, but are not as recent
     public static void analyse(Map<String,Long> filesInDir, Map<String,Long> filesInDirReceived) {
         String filename;
 

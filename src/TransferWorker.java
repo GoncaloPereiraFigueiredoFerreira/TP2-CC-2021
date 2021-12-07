@@ -35,7 +35,15 @@ public class TransferWorker extends Thread{
         long fileLength = 0;
 
         try {
-            file = new File(folderPath + filename);
+            String separator;
+            if(!System.getProperty("file.separator").equals("/") ) separator="\\";
+            else separator = "/";
+            String[] ar = FFSync.pathToArray(filename);
+            StringBuilder sb = new StringBuilder();
+            sb.append(folderPath);
+            for (int i =0; i<ar.length;i++)sb.append(separator).append(ar[i]);
+
+            file = new File(sb.toString());
             fips = new FileInputStream(file);
         } catch (FileNotFoundException fnfe) {
             System.out.println("Could not find the file: " + filename);
@@ -105,7 +113,18 @@ public class TransferWorker extends Thread{
         FileOutputStream fops = null;
 
         try {
-            fops = new FileOutputStream(folderPath + filename);
+            String separator;
+            if(!System.getProperty("file.separator").equals("/") ) separator="\\";
+            else separator = "/";
+            String[] ar = FFSync.pathToArray(filename);
+            StringBuilder sb = new StringBuilder();
+            sb.append(folderPath);
+            for (int i =0; i<ar.length;i++)sb.append(separator).append(ar[i]);
+
+            File f2 = new File(sb.toString());
+            f2.mkdirs();
+
+            fops = new FileOutputStream(f2);
         } catch (FileNotFoundException e) {
             System.out.println("Error creating/opening file: " + filename);
 
