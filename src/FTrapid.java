@@ -342,12 +342,12 @@ public class FTrapid {
      *
      */
 
-    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException {
+    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException, OpcodeNotRecognizedException {
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         ErrorSynPackageInfo ret = null;
         out.put(packet);
-        short msg = -1;
-        String filename=null;
+        short msg;
+        String filename;
         int length=0;
         int hash;
         if (out.get(0) == ERRopcode || out.get(0)==SYNopcode) {
@@ -365,7 +365,7 @@ public class FTrapid {
             if (generatedHash !=hash) throw new IntegrityException();
 
             ret= new ErrorSynPackageInfo(msg,filename);
-        }
+        }else throw new OpcodeNotRecognizedException();
         return ret;
     }
 
@@ -534,7 +534,7 @@ public class FTrapid {
       return readRDWRPacket(dp.getData());
    }
 
-   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException {return readERRSYNPacket(dp.getData());}
+   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException,OpcodeNotRecognizedException {return readERRSYNPacket(dp.getData());}
 
     public void answer(short mode,short msg,String filename) throws OpcodeNotRecognizedException,IOException {
        // mode is 1 for error msg or 2 for syn
@@ -548,7 +548,6 @@ public class FTrapid {
 
    /*
    *    Verifica a integridade do package
-   *
     */
     public short verifyPackage(byte[] data){
         return data[0];

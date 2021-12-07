@@ -151,62 +151,66 @@ public class ConnectionWorker extends Thread {
         } catch (IntegrityException ignored) {} //Doesnt do anything. Expects for a resend.//TODO: Make a thread that resends the write requests not confirmed
     }
 
+    //TODO: Handle exceptions
     private void receiveSyn(DatagramPacket dp) {
         ErrorSynPackageInfo espi = null;
         try {
             espi = ftr.analyseAnswer(dp);
-        } catch (IntegrityException e) {
-            e.printStackTrace();
-        }
-        String filename = espi.getFilename();
-        TransferWorker tw;
 
-        //If there is a transfer worker associated with the file name received, starts it, if it isnt already running
-        //Receive of SYN duplicate doesnt affect the application
-        if ((tw = requestsSent.get(filename)) != null) {
-            if (!tw.isAlive()) {
-                tw.connectToPort(externalIP, espi.getMsg());
-                tw.start();
-            }
-        }
-        //Sends an error if there isnt a "log" of a thread in charge of sending a file with the name received
-        else {
-            try {
-                writeLock.lock();
-                try {
-                    ftr.answer((short) 1, (short) 403, filename); //TODO: Handle exception
-                } catch (OpcodeNotRecognizedException | IOException e) {
-                    e.printStackTrace();
+            String filename = espi.getFilename();
+            TransferWorker tw;
+
+            //If there is a transfer worker associated with the file name received, starts it, if it isnt already running
+            //Receive of SYN duplicate doesnt affect the application
+            if ((tw = requestsSent.get(filename)) != null) {
+                if (!tw.isAlive()) {
+                    tw.connectToPort(externalIP, espi.getMsg());
+                    tw.start();
                 }
-            } finally {
-                writeLock.unlock();
             }
+            //Sends an error if there isnt a "log" of a thread in charge of sending a file with the name received
+            else {
+                try {
+                    writeLock.lock();
+                    try {
+                        ftr.answer((short) 1, (short) 403, filename);
+                    } catch (OpcodeNotRecognizedException | IOException e) {
+                        e.printStackTrace();
+                    }
+                } finally {
+                    writeLock.unlock();
+                }
+            }
+        } catch (IntegrityException | OpcodeNotRecognizedException e) {
+            e.printStackTrace();
         }
     }
 
+    //TODO: Handle exceptions
     private void receiveError(DatagramPacket dp) {
         ErrorSynPackageInfo espi = null;
         try {
             espi = ftr.analyseAnswer(dp);
-        } catch (IntegrityException e) {
+
+            short errorCode = espi.getMsg();
+            String filename = espi.getFilename();
+
+            //TODO: Add all the errors
+            //Connection error
+            if (errorCode == 400) {
+
+            }
+            //Already owned file or the local file is the latest
+            else if (errorCode == 401) {
+                TransferWorker tw = requestsSent.remove(filename);
+                tw.closeSocket();
+            } else if (errorCode == 402) {
+                //Remover o ficheiro na maquina que recebe
+            } else if (errorCode == 403) {
+                //TODO: O que fazer aqui?
+            }
+        } catch (IntegrityException | OpcodeNotRecognizedException e) {
             e.printStackTrace();
-        }
-        short errorCode = espi.getMsg();
-        String filename = espi.getFilename();
-
-        //TODO: Add all the errors
-        //Connection error
-        if (errorCode == 400) {
-
-        }
-        //Already owned file or the local file is the latest
-        else if (errorCode == 401) {
-            TransferWorker tw = requestsSent.remove(filename);
-            tw.closeSocket();
-        } else if (errorCode == 402) {
-            //Remover o ficheiro na maquina que recebe
-        } else if (errorCode == 403) {
-            //TODO: O que fazer aqui?
         }
     }
 
@@ -224,6 +228,7 @@ public class ConnectionWorker extends Thread {
             } catch (SocketException ignored) {
             }
         }
+
         return ds;
     }
 
