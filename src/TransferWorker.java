@@ -125,7 +125,6 @@ public class TransferWorker extends Thread{
                     f2.mkdirs();
                 }
                 sb.append(separator).append(ar[i]);
-
             }
 
 
