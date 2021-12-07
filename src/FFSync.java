@@ -21,7 +21,7 @@ public class FFSync {
 
         }
     }*/
-
+    public static int MAXTHREADSNUMBER = 33;
 
 
     public static void main(String[] args) {

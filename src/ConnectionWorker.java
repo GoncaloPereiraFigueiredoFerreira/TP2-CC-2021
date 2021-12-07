@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
+import java.net.http.HttpRequest;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -92,14 +93,14 @@ public class ConnectionWorker extends Thread {
                 readLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                receive = false;
+                if(Thread.activeCount() < FFSync.MAXTHREADSNUMBER) receive = false;
             } catch (IOException ioException) {
                 handlePackage = false;
             } finally {
                 readLock.unlock();
             }
 
-            if (handlePackage) {
+            if (handlePackage && receive) {
                 if (ftr.verifyPackage(dp.getData()) == FTrapid.WRopcode)
                     receiveWriteRequest(dp);
                 else if (ftr.verifyPackage(dp.getData()) == FTrapid.SYNopcode)
@@ -109,6 +110,7 @@ public class ConnectionWorker extends Thread {
             }
 
             handlePackage = true;
+            joinTransferWorkers();
         }
     }
 
@@ -135,11 +137,11 @@ public class ConnectionWorker extends Thread {
                 //TODO: Provavelmente vai ser necessário adicionar locks para as estruturas de dados
                 requestsReceived.put(filename, tw);
                 errorOrSyn = 2;
-                msg        = (short) dsTransferWorker.getLocalPort();
+                msg        = (short) dsTransferWorker.getLocalPort(); System.out.println("request- filename" + filename + " /port sent in syn: " + msg);
             } else {
                 //Duplicate of a previous request. Resends SYN package.
                 errorOrSyn = 2;
-                msg        = requestsReceived.get(filename).getLocalPort();
+                msg        = requestsReceived.get(filename).getLocalPort(); System.out.println("dup request- filename" + filename + " /port sent in syn: " + msg);
             }
 
             //Sends answer
@@ -160,10 +162,12 @@ public class ConnectionWorker extends Thread {
             String filename = espi.getFilename();
             TransferWorker tw;
 
-            //If there is a transfer worker associated with the file name received, starts it, if it isnt already running
+            //If there is a transfer worker associated with the file name received, starts it(only if it isnt running already)
             //Receive of SYN duplicate doesnt affect the application
             if ((tw = requestsSent.get(filename)) != null) {
-                if (!tw.isAlive()) {
+                if (tw.getState() == State.NEW) {
+                    System.out.println("filename receiveSyn: " + filename + " /port received in syn: " + espi.getMsg());
+                    System.out.println("Nr of threads: " + (requestsReceived.size() + requestsSent.size()));
                     tw.connectToPort(externalIP, espi.getMsg());
                     tw.start();
                 }
@@ -232,19 +236,29 @@ public class ConnectionWorker extends Thread {
         return ds;
     }
 
-    public void fillDirMap(String path) throws Exception {
-        File dir = new File(path);
-        if (dir.isDirectory()) {
-            File[] fs = dir.listFiles();
-            if (fs != null) {
-                for (File f : fs) {
-                    if (f.isFile()) {
-                        long data = f.lastModified();
-                        String name = f.getName();
-                        this.filesInDir.put(name, data);
-                    }
+    public void joinTransferWorkers() {
+        for(Map.Entry<String,TransferWorker> entry : requestsSent.entrySet()){
+            if(entry.getValue() != null && entry.getValue().getState() == State.TERMINATED) {
+                try {
+                    entry.getValue().join();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
+                requestsSent.replace(entry.getKey(),null);
             }
-        } else throw new Exception("Diretoria não encontrada");
+        }
+
+        for(Map.Entry<String,TransferWorker> entry : requestsReceived.entrySet()){
+            if(entry.getValue() != null && entry.getValue().getState() == State.TERMINATED) {
+                try {
+                    entry.getValue().join();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                requestsReceived.replace(entry.getKey(),null);
+            }
+        }
+
+        System.out.println("Nr of threads: " + Thread.activeCount());
     }
 }

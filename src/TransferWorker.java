@@ -207,7 +207,8 @@ public class TransferWorker extends Thread{
         try {
             this.ds.connect(InetAddress.getByName(ip),port);
             return true;
-        } catch (UnknownHostException e) {
+        }
+        catch (UnknownHostException e) {
             //TODO: Adicionar erro
             e.printStackTrace();
             return false;
