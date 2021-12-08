@@ -51,7 +51,7 @@ public class FTrapid {
 
     private byte[] createRDWRPackage(String filename, short opcode, short port, long data){
         byte[] packet;
-        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.length()+20);
+        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.getBytes().length);
         if (opcode==1) out.put(RDopcode);
         else if (opcode==2) out.put(WRopcode);
         out.putShort(port);
@@ -476,6 +476,7 @@ public class FTrapid {
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
             try {
                 dS.receive(dPin);
+
                 dS.setSoTimeout(100);
                 DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
                 boolean flag2=false;
@@ -499,9 +500,6 @@ public class FTrapid {
                         DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
                         dS.send(dPout);
                         expectedblock++;
-                    }else if (info.getNrBloco() == expectedblock -1){
-                        DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
-                        dS.send(dPout);
                     }
                 }
             }catch (SocketTimeoutException e){
