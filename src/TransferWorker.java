@@ -8,12 +8,7 @@ import java.util.Arrays;
 
 public class TransferWorker extends Thread{
     private TWState state;
-    public enum TWState {NEW, RUNNING, ERROROCURRED, TERMINATED}
-
-    public static final short NEW = 0;
-    public static final short RUNNING = 1;
-    public static final short ERROROCURRED = 2;
-    public static final short TERMINATED = 3;
+    public enum TWState {NEW, RUNNING, TIMEDOUT, ERROROCURRED, TERMINATED}
 
     private final boolean requester; //true if it made the request
     private final boolean receiver;      //true if is reading(receiving) a file

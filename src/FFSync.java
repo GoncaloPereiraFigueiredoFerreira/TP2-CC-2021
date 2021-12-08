@@ -21,9 +21,8 @@ public class FFSync {
 
         }
     }*/
+    public static final int MAXTHREADSNUMBER = 60; //Cannot be inferior than 10
     public static final int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
-    public static int CURRENTRECEIVERSNUMBER = 0; //Number of receivers running
-    public static int CURRENTSENDERSNUMBER   = 0; //Number of senders running
 
     public static void main(String[] args) {
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows

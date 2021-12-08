@@ -52,11 +52,14 @@ public class ConnectionWorker extends Thread {
                 datagramSocket = createDatagramSocket();
                 while (datagramSocket == null) {
                     //Sleeps 1 second and tries to get a valid socket again
-                    try { sleep(1000); } catch (InterruptedException ignored) {}
+                    try { sleep(500); } catch (InterruptedException ignored) {}
                     datagramSocket = createDatagramSocket();
                 }
                 port = (short) datagramSocket.getLocalPort();
                 
+                while(Thread.activeCount() >= FFSync.MAXTHREADSNUMBER)
+                    try { sleep(500); } catch (InterruptedException ignored) {} //Maybe use 'Signal'
+
                 try {
                     writeLock.lock();
                     ftr.requestRRWR(filename, port, (short) 2, date);
@@ -75,10 +78,13 @@ public class ConnectionWorker extends Thread {
             }
 
 
+            //TODO: Add check of number of threads
+            //TODO: If transferworker(receiver) gets a timeout before starting the receive of a file, change its state to TIMEDOUT, so it can be rerunned after receiving the request again 
+            //TODO: Use timer between iterations?
             for(int i = 0; i < 5 && filesInDir.size() != 0; i++){
                 TransferWorker transferWorker = null;
 
-                for(Map.Entry<String,TransferWorker> requestSentEntry : requestsSent.entrySet())
+                for(Map.Entry<String,TransferWorker> requestSentEntry : requestsSent.entrySet()){
                     transferWorker = requestSentEntry.getValue();
                     if(transferWorker.getTWState() == TransferWorker.TWState.NEW){
                         try {
@@ -87,6 +93,7 @@ public class ConnectionWorker extends Thread {
                         } catch (OpcodeNotRecognizedException | IOException ignored) {
                         } finally { writeLock.unlock(); }
                     }
+                }
             }
 
             System.out.println("Já terminei de enviar tudo!");
@@ -104,7 +111,7 @@ public class ConnectionWorker extends Thread {
                 readLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if(Thread.activeCount() < (FFSync.MAXTHREADSNUMBERPERFUNCTION / 2)) receive = false;
+                if(Thread.activeCount() < (FFSync.MAXTHREADSNUMBER / 2)) receive = false;
                 //if(FFSync.CURRENTRECEIVERSNUMBER < (FFSync.MAXTHREADSNUMBERPERFUNCTION / 2)) receive = false;
             } catch (IOException ioException) {
                 handlePackage = false;
@@ -143,6 +150,10 @@ public class ConnectionWorker extends Thread {
                 dsTransferWorker = createDatagramSocket();
                 TransferWorker tw = new TransferWorker(false, true, folderPath, filename, dsTransferWorker);
                 tw.connectToPort(externalIP, rpi.getPort());
+
+                while(Thread.activeCount() >= FFSync.MAXTHREADSNUMBER)
+                    try { sleep(500); } catch (InterruptedException ignored) {} //Maybe use 'Signal'
+
                 tw.start();
 
                 //TODO: Provavelmente vai ser necessário adicionar locks para as estruturas de dados
@@ -177,6 +188,10 @@ public class ConnectionWorker extends Thread {
             if ((tw = requestsSent.get(filename)) != null) {
                 if (!tw.isAlive() && tw.getTWState() == TransferWorker.TWState.NEW) {
                     tw.connectToPort(externalIP, espi.getMsg());
+
+                    while(Thread.activeCount() >= FFSync.MAXTHREADSNUMBER)
+                    try { sleep(500); } catch (InterruptedException ignored) {} //Maybe use 'Signal'
+
                     tw.start();
                 }
             }
