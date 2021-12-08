@@ -200,6 +200,10 @@ public class TransferWorker extends Thread{
 
     /* ********** Auxiliar Methods ********** */
 
+    public String getFileName(){
+        return this.filename;
+    }
+
     public TWState getTWState() {
         return state;
     }

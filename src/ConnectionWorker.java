@@ -1,4 +1,3 @@
-
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
@@ -46,34 +45,51 @@ public class ConnectionWorker extends Thread {
 
         boolean requestSent = true;
 
-        while(it.hasNext()) {
-            entry = it.next(); filename = entry.getKey(); date = entry.getValue();
+            while(it.hasNext()) {
+                entry = it.next(); filename = entry.getKey(); date = entry.getValue();
 
-            //Gets local usable port
-            datagramSocket = createDatagramSocket();
-            while (datagramSocket == null) {
-                //Sleeps 1 second and tries to get a valid socket again
-                try { sleep(1000); } catch (InterruptedException ignored) {}
+                //Gets local usable port
                 datagramSocket = createDatagramSocket();
+                while (datagramSocket == null) {
+                    //Sleeps 1 second and tries to get a valid socket again
+                    try { sleep(1000); } catch (InterruptedException ignored) {}
+                    datagramSocket = createDatagramSocket();
+                }
+                port = (short) datagramSocket.getLocalPort();
+                
+                try {
+                    writeLock.lock();
+                    ftr.requestRRWR(filename, port, (short) 2, date);
+                } catch (OpcodeNotRecognizedException | IOException e) {
+                    requestSent = false;
+                } finally { writeLock.unlock(); }
+
+                if(requestSent) {
+                    TransferWorker tw = new TransferWorker(true, false, folderPath, filename, datagramSocket);
+                    requestsSent.put(filename, tw);
+
+                    it.remove(); //Removes from the "queue"
+                }
+
+                requestSent = true;
             }
-            port = (short) datagramSocket.getLocalPort();
 
-            try {
-                writeLock.lock();
-                ftr.requestRRWR(filename, port, (short) 2, date);
-            } catch (OpcodeNotRecognizedException | IOException ignored) {
-                requestSent = false;
-            } finally { writeLock.unlock(); }
 
-            if(requestSent) {
-                TransferWorker tw = new TransferWorker(true, false, folderPath, filename, datagramSocket);
-                requestsSent.put(filename, tw);
+            for(int i = 0; i < 5 && filesInDir.size() != 0; i++){
+                TransferWorker transferWorker = null;
 
-                it.remove(); //Removes from the "queue"
+                for(Map.Entry<String,TransferWorker> requestSentEntry : requestsSent.entrySet())
+                    transferWorker = requestSentEntry.getValue();
+                    if(transferWorker.getTWState() == TransferWorker.TWState.NEW){
+                        try {
+                            writeLock.lock();
+                            ftr.requestRRWR(transferWorker.getFileName(), transferWorker.getLocalPort(), (short) 2, (long) 0);
+                        } catch (OpcodeNotRecognizedException | IOException ignored) {
+                        } finally { writeLock.unlock(); }
+                    }
             }
 
-            requestSent = true;
-        }
+            System.out.println("Já terminei de enviar tudo!");
     }
 
     public void receive() {
@@ -159,7 +175,7 @@ public class ConnectionWorker extends Thread {
             //If there is a transfer worker associated with the file name received, starts it(only if it isnt running already)
             //Receive of SYN duplicate doesnt affect the application
             if ((tw = requestsSent.get(filename)) != null) {
-                if (tw.getTWState() == TransferWorker.TWState.NEW) {
+                if (!tw.isAlive() && tw.getTWState() == TransferWorker.TWState.NEW) {
                     tw.connectToPort(externalIP, espi.getMsg());
                     tw.start();
                 }
