@@ -17,7 +17,7 @@ public class FTrapid {
     public static final byte ACKopcode  = 4;
     public static final byte ERRopcode  = 5;
     public static final byte SYNopcode  = 6;
-    public static final byte AUTopcode =7;
+    public static final byte AUTopcode  = 7;
 
     public static final int MAXRDWRSIZE=514; // n sei
     public static final int MAXDATASIZE=1024;
@@ -36,7 +36,6 @@ public class FTrapid {
     //DatagraSocket Sender Size =  65535 B ≃ 64KB
     //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
 
-    //TODO: Implementar hashcodes
     /////////////////////// Definição dos pacotes///////////////////////////
 
     /*
@@ -553,11 +552,10 @@ public class FTrapid {
         return data[0];
     }
 
-    public String translateError(short error){
+    public static String translateError(short error){
         if (error == 400) return "Connection Error";
-        else if (error == 401) return "Already owned File";
-        else if (error == 402) return "Aplication Error";
-        else if (error == 403) return "Package not recognized";
+        else if (error == 401) return "Aplication Error";
+        else if (error == 402) return "Package not recognized";
         else return "";
     }
 

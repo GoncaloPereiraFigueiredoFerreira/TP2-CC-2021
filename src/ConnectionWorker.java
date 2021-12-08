@@ -33,9 +33,9 @@ public class ConnectionWorker extends Thread {
         this.requestsReceived = requestsReceived;
     }
 
-    //TODO: Delete file in the receiver client if there is an io error (or something similar) while receiving
-    //TODO: Se receber erro "Erro ao receber ficheiro", voltar a adicionar ao map de ficheiros pertencentes à pasta
     //TODO: add locks to the data structures
+    //TODO: Make a thread that resends the write requests not confirmed
+    //TODO: Block the threads from receiving or sending if the limit is reached
 
     @Override
     public void run() {
@@ -81,19 +81,19 @@ public class ConnectionWorker extends Thread {
     }
 
     public void receive() {
-        DatagramPacket dp = new DatagramPacket(new byte[FTrapid.MAXRDWRSIZE], FTrapid.MAXRDWRSIZE);
-        boolean receive = true, //Used as a flag that indicates if the thread should continue to listen for packets
+        DatagramPacket dp     = new DatagramPacket(new byte[FTrapid.MAXRDWRSIZE], FTrapid.MAXRDWRSIZE);
+        boolean receive       = true, //Used as a flag that indicates if the thread should continue to listen for packets
                 handlePackage = true; //Flag that indicates if the package should be handled
 
+        //Tries to receive packets until the throw of a SocketTimeoutException along with half of the threads disponibilized for receiving not being used
         while (receive) {
-            //Tries to receive packets until the throw of a SocketTimeoutException.
-            //The throw of this exceptions probably means the end of requests from the other client
 
             try {
                 readLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if(Thread.activeCount() < FFSync.MAXTHREADSNUMBER) receive = false;
+                if(Thread.activeCount() < (FFSync.MAXTHREADSNUMBERPERFUNCTION / 2)) receive = false;
+                //if(FFSync.CURRENTRECEIVERSNUMBER < (FFSync.MAXTHREADSNUMBERPERFUNCTION / 2)) receive = false;
             } catch (IOException ioException) {
                 handlePackage = false;
             } finally {
@@ -110,7 +110,6 @@ public class ConnectionWorker extends Thread {
             }
 
             handlePackage = true;
-            joinTransferWorkers();
         }
     }
 
@@ -150,10 +149,9 @@ public class ConnectionWorker extends Thread {
                 ftr.answer(errorOrSyn, msg, filename);
             } catch (OpcodeNotRecognizedException | IOException ignored) { //Tries again after a resend, in case of a IOException
             } finally { writeLock.unlock(); }
-        } catch (IntegrityException ignored) {} //Doesnt do anything. Expects for a resend.//TODO: Make a thread that resends the write requests not confirmed
+        } catch (IntegrityException ignored) {} //Doesnt do anything. Expects a resend.
     }
 
-    //TODO: Handle exceptions
     private void receiveSyn(DatagramPacket dp) {
         ErrorSynPackageInfo espi = null;
         try {
@@ -165,9 +163,7 @@ public class ConnectionWorker extends Thread {
             //If there is a transfer worker associated with the file name received, starts it(only if it isnt running already)
             //Receive of SYN duplicate doesnt affect the application
             if ((tw = requestsSent.get(filename)) != null) {
-                if (tw.getState() == State.NEW) {
-                    System.out.println("filename receiveSyn: " + filename + " /port received in syn: " + espi.getMsg());
-                    System.out.println("Nr of threads: " + (requestsReceived.size() + requestsSent.size()));
+                if (tw.getTWState() == TransferWorker.TWState.NEW) {
                     tw.connectToPort(externalIP, espi.getMsg());
                     tw.start();
                 }
@@ -176,45 +172,35 @@ public class ConnectionWorker extends Thread {
             else {
                 try {
                     writeLock.lock();
-                    try {
-                        ftr.answer((short) 1, (short) 403, filename);
-                    } catch (OpcodeNotRecognizedException | IOException e) {
-                        e.printStackTrace();
-                    }
-                } finally {
-                    writeLock.unlock();
-                }
+                    ftr.answer((short) 1, (short) 403, filename);
+                } catch (OpcodeNotRecognizedException | IOException ignored) {
+                } finally { writeLock.unlock(); }
             }
         } catch (IntegrityException | OpcodeNotRecognizedException e) {
-            e.printStackTrace();
+            //OpcodeNotRecognizedException doesn't happen in here. Checked in the caller function
         }
     }
 
-    //TODO: Handle exceptions
+    //TODO: Add all the errors and handled them (Maior parte é simplesmente um log a dizer que houve erro provavelmente)
     private void receiveError(DatagramPacket dp) {
-        ErrorSynPackageInfo espi = null;
+        ErrorSynPackageInfo espi;
         try {
             espi = ftr.analyseAnswer(dp);
 
             short errorCode = espi.getMsg();
             String filename = espi.getFilename();
 
-            //TODO: Add all the errors
             //Connection error
             if (errorCode == 400) {
+                //TODO: Maybe throw exception to end the program
+                //throw new ConnectException();
+            } else if (errorCode == 401) {
+                //Remover o ficheiro na maquina que recebe
+            } else if (errorCode == 402) {
 
             }
-            //Already owned file or the local file is the latest
-            else if (errorCode == 401) {
-                TransferWorker tw = requestsSent.remove(filename);
-                tw.closeSocket();
-            } else if (errorCode == 402) {
-                //Remover o ficheiro na maquina que recebe
-            } else if (errorCode == 403) {
-                //TODO: O que fazer aqui?
-            }
         } catch (IntegrityException | OpcodeNotRecognizedException e) {
-            e.printStackTrace();
+            //OpcodeNotRecognizedException doesn't happen in here. Checked in the caller function
         }
     }
 
@@ -229,16 +215,16 @@ public class ConnectionWorker extends Thread {
             try {
                 ds = new DatagramSocket(port);
                 validPort = true;
-            } catch (SocketException ignored) {
-            }
+            } catch (SocketException ignored) {}
         }
 
         return ds;
     }
 
-    public void joinTransferWorkers() {
-        for(Map.Entry<String,TransferWorker> entry : requestsSent.entrySet()){
-            if(entry.getValue() != null && entry.getValue().getState() == State.TERMINATED) {
+    //TODO: implementar locks para fazer isto. Reutilizar isto para percorrer o map de requests e mandar novamente os requests
+    public void cleanTerminatedWorkers(Map<String,TransferWorker> requests){
+        for(Map.Entry<String,TransferWorker> entry : requests.entrySet()){
+            if(entry.getValue() != null && entry.getValue().getTWState() == TransferWorker.TWState.TERMINATED) {
                 try {
                     entry.getValue().join();
                 } catch (InterruptedException e) {
@@ -247,18 +233,5 @@ public class ConnectionWorker extends Thread {
                 requestsSent.replace(entry.getKey(),null);
             }
         }
-
-        for(Map.Entry<String,TransferWorker> entry : requestsReceived.entrySet()){
-            if(entry.getValue() != null && entry.getValue().getState() == State.TERMINATED) {
-                try {
-                    entry.getValue().join();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                requestsReceived.replace(entry.getKey(),null);
-            }
-        }
-
-        System.out.println("Nr of threads: " + Thread.activeCount());
     }
 }

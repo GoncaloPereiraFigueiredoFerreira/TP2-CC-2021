@@ -7,15 +7,25 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 public class TransferWorker extends Thread{
+    private TWState state;
+    public enum TWState {NEW, RUNNING, ERROROCURRED, TERMINATED}
+
+    public static final short NEW = 0;
+    public static final short RUNNING = 1;
+    public static final short ERROROCURRED = 2;
+    public static final short TERMINATED = 3;
+
     private final boolean requester; //true if it made the request
     private final boolean receiver;      //true if is reading(receiving) a file
     private final String folderPath; //path to the shared folder
     private final String filename;   //path to the file wished to be read/written within the shared folder
     private final DatagramSocket ds; //socket used to connect with the other client
     private final FTrapid ftrapid;
+
     private final int MAXDATAPERCONNECTION = FTrapid.MAXDATA * FTrapid.MAXDATAPACKETSNUMBER; //limit of bytes sent by FTrapid in one connection
 
     public TransferWorker(boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds){
+        this.state      = TWState.NEW;
         this.requester  = requester;
         this.receiver   = receiver;
         this.folderPath = folderPath;
@@ -24,15 +34,15 @@ public class TransferWorker extends Thread{
         this.ftrapid    = new FTrapid(ds);
     }
 
-    // ********************** (CHECK) não esquecer tratar das excecoes *************
+    // ********************** TODO não esquecer tratar das excecoes *************
     /* Executed to send a file */
     private void runSendFile() {
         byte[] buffer = null;
 
         //Writes the file to a buffer and send it
-        File file = null;
-        FileInputStream fips = null;
-        long fileLength = 0;
+        File file;
+        FileInputStream fips;
+        long fileLength;
 
         try {
             String separator;
@@ -41,16 +51,15 @@ public class TransferWorker extends Thread{
             String[] ar = FFSync.pathToArray(filename);
             StringBuilder sb = new StringBuilder();
             sb.append(folderPath);
-            for (int i =0; i<ar.length;i++)sb.append(separator).append(ar[i]);
+            for (int i = 0; i < ar.length ;i++)sb.append(separator).append(ar[i]);
 
             file = new File(sb.toString());
             fips = new FileInputStream(file);
         } catch (FileNotFoundException fnfe) {
+            state = TWState.ERROROCURRED;
             System.out.println("Could not find the file: " + filename);
-            fnfe.printStackTrace();
-
-            //(CHECK) Mandar erro a cancelar transferencia
-            ds.close();
+            //TODO: Mandar erro a cancelar transferencia
+            closeSocket();
             return;
         }
 
@@ -65,10 +74,10 @@ public class TransferWorker extends Thread{
             try {
                 fips.read(buffer);
             } catch (IOException e) {
-                System.out.println("Error reading file : " + filename);
-
-                //(CHECK) Enviar erro para cancelar a transferencia
-                ds.close();
+                state = TWState.ERROROCURRED;
+                System.out.println("Error reading file: " + filename + ".");
+                //TODO: Enviar erro para cancelar a transferencia
+                closeSocket();
             }
             try {
                 ftrapid.sendData(buffer);
@@ -83,25 +92,27 @@ public class TransferWorker extends Thread{
         try {
             fips.read(buffer);
         } catch (IOException e) {
+            state = TWState.ERROROCURRED;
             System.out.println("Error reading file : " + filename);
-
-            //(CHECK) Enviar erro para cancelar a transferencia
-            ds.close();
+            //TODO: Enviar erro para cancelar a transferencia
+            closeSocket();
         }
+
         try {
             ftrapid.sendData(buffer);
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        ds.close();
-        //(CHECK) what do we do here?
+        closeSocket();
+        //TODO: what do we do here?
         try {
             fips.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
 
     /*
     *Executed to read a file
@@ -119,21 +130,20 @@ public class TransferWorker extends Thread{
             String[] ar = FFSync.pathToArray(filename);
             StringBuilder sb = new StringBuilder();
             sb.append(folderPath);
-            for (int i =0; i<ar.length;i++){
-                if (i!=0&&i== ar.length-1) {
+            for (int i = 0; i < ar.length; i++){
+                if (i !=0 && i == ar.length - 1) {
                     File f2 = new File(sb.toString());
                     f2.mkdirs();
                 }
                 sb.append(separator).append(ar[i]);
             }
 
-
             fops = new FileOutputStream(sb.toString());
         } catch (FileNotFoundException e) {
+            state = TWState.ERROROCURRED;
             System.out.println("Error creating/opening file: " + filename);
-
-            //(CHECK) Enviar erro para cancelar a transferencia
-            ds.close();
+            //TODO: Enviar erro para cancelar a transferencia
+            closeSocket();
             return;
         }
 
@@ -143,10 +153,11 @@ public class TransferWorker extends Thread{
                 fops.write(buffer);
                 fops.flush();
             } catch (IOException e) {
-                System.out.println("Error writing file : " + filename);
-
-                //(CHECK) Enviar erro para cancelar a transferencia
-                ds.close();
+                state = TWState.ERROROCURRED;
+                System.out.println("Error writing file: " + filename);
+                if(new File(filename).delete()) System.out.println("Corrupted file deleted!");
+                //TODO: Enviar erro para cancelar a transferencia
+                closeSocket();
                 return;
             }
 
@@ -154,49 +165,45 @@ public class TransferWorker extends Thread{
             if(buffer.length < MAXDATAPERCONNECTION) keepWriting = false;
         }
 
-        ds.close();
-        //(CHECK) what do we do in this exception?
-        try { fops.close(); }
-        catch (IOException e) { e.printStackTrace(); }
+        closeSocket();
+
+        try { fops.close(); } catch (IOException ignored){}
     }
 
     public void run() {
+        state = TWState.RUNNING;
+
         //Verifies the value of mode, to select the behaviour of the thread
         if(requester) {
             if(receiver) {
-                //(CHECK) send SYN/ACK instead of SYN?
-                /*try {
-                    ftrapid.answer((short) 2, (short) 0);
-                } catch (OpcodeNotRecognizedException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }*/
-
+                //(CHECK) send ACK?
                 runReceiveFile();
             }
             else {
-                System.out.println("Sender\nLocal: " + ds.getLocalAddress().getHostName() + " " + ds.getLocalPort() + "\nExternalPort: " + ds.getInetAddress() + " " + ds.getPort());//(PRINT)
                 runSendFile();
                 System.out.println("File sent!");
             }
         }
         else {
             if(receiver) {
-                System.out.println("RECEIVER\nLocal: " + ds.getLocalAddress().getHostName() + " " + ds.getLocalPort() + "\nExternalPort: " + ds.getInetAddress() + " " + ds.getPort()); //(PRINT)
                 runReceiveFile();
                 System.out.println("Received file!");
             }
             else {
-                //(CHECK) receive syn
-                //ftrapid.receiveSYN();
-
+                //(CHECK) receive ack?
                 runSendFile();
             }
         }
+
+        state = TWState.TERMINATED;
+        closeSocket();
     }
 
     /* ********** Auxiliar Methods ********** */
+
+    public TWState getTWState() {
+        return state;
+    }
 
     public short getLocalPort(){
         if(ds == null) return -1;
@@ -210,7 +217,6 @@ public class TransferWorker extends Thread{
         }
         catch (UnknownHostException e) {
             //TODO: Adicionar erro
-            e.printStackTrace();
             return false;
         }
     }
