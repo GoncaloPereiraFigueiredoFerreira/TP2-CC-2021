@@ -34,6 +34,25 @@ public class TransferWorker extends Thread{
         this.ftrapid    = new FTrapid(ds);
     }
 
+    private String filePathgenerator (String filename,boolean receiver){
+        String separator;
+        if(!System.getProperty("file.separator").equals("/") ) separator="\\";
+        else separator = "/";
+        String[] ar = FFSync.pathToArray(filename);
+        StringBuilder sb = new StringBuilder();
+        sb.append(folderPath);
+        for (int i = 0; i < ar.length ;i++) {
+            if (receiver && i !=0 && i == ar.length - 1) {
+                File f2 = new File(sb.toString());
+                f2.mkdirs();
+            }
+            sb.append(separator).append(ar[i]);
+        }
+
+        return sb.toString();
+    }
+
+
     // ********************** TODO não esquecer tratar das excecoes *************
     /* Executed to send a file */
     private void runSendFile() {
@@ -45,15 +64,8 @@ public class TransferWorker extends Thread{
         long fileLength;
 
         try {
-            String separator;
-            if(!System.getProperty("file.separator").equals("/") ) separator="\\";
-            else separator = "/";
-            String[] ar = FFSync.pathToArray(filename);
-            StringBuilder sb = new StringBuilder();
-            sb.append(folderPath);
-            for (int i = 0; i < ar.length ;i++)sb.append(separator).append(ar[i]);
-
-            file = new File(sb.toString());
+            String filepath = filePathgenerator(filename,false);
+            file = new File(filepath);
             fips = new FileInputStream(file);
         } catch (FileNotFoundException fnfe) {
             state = TWState.ERROROCURRED;
@@ -124,21 +136,8 @@ public class TransferWorker extends Thread{
         FileOutputStream fops = null;
 
         try {
-            String separator;
-            if(!System.getProperty("file.separator").equals("/") ) separator="\\";
-            else separator = "/";
-            String[] ar = FFSync.pathToArray(filename);
-            StringBuilder sb = new StringBuilder();
-            sb.append(folderPath);
-            for (int i = 0; i < ar.length; i++){
-                if (i !=0 && i == ar.length - 1) {
-                    File f2 = new File(sb.toString());
-                    f2.mkdirs();
-                }
-                sb.append(separator).append(ar[i]);
-            }
-
-            fops = new FileOutputStream(sb.toString());
+            String filepath = filePathgenerator(filename,true);
+            fops = new FileOutputStream(filepath);
         } catch (FileNotFoundException e) {
             state = TWState.ERROROCURRED;
             System.out.println("Error creating/opening file: " + filename);
@@ -152,7 +151,7 @@ public class TransferWorker extends Thread{
                 buffer = ftrapid.receiveData();
                 fops.write(buffer);
                 fops.flush();
-            } catch (IOException e) {
+            } catch (Exception e) {
                 state = TWState.ERROROCURRED;
                 System.out.println("Error writing file: " + filename);
                 if(new File(filename).delete()) System.out.println("Corrupted file deleted!");

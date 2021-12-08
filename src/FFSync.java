@@ -79,21 +79,32 @@ public class FFSync {
                 return;
             }
 
-            Map<String, Long> filesInDirReceived;
+            Map<String, Long> filesInDirReceived = null;
 
             //Decides the order in which it will receive the map of files from the other client
             if(ds.getLocalAddress().getHostAddress().compareTo(externalIP) < 0) {
                 ftr.sendData(serialize((HashMap<String, Long>) filesInDir));
-                filesInDirReceived = deserialize(ftr.receiveData());
+                try {
+                    filesInDirReceived = deserialize(ftr.receiveData());
+                } catch (Exception e) {
+                    System.out.println("Error sending/receiving list of files!");
+                    return;
+                }
             }
             else{
-                filesInDirReceived = deserialize(ftr.receiveData());
+                try {
+                    filesInDirReceived = deserialize(ftr.receiveData());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
                 ftr.sendData(serialize((HashMap<String, Long>) filesInDir));
             }
 
             //Corrects the map of files that need to be sent
-            analyse(filesInDir,filesInDirReceived);
-        }catch (IOException | ClassNotFoundException e) {
+            if (filesInDirReceived != null) {
+                analyse(filesInDir,filesInDirReceived);
+            }
+        }catch (Exception e ) {
             System.out.println("Error sending/receiving list of files!");
             return;
         }
@@ -131,7 +142,7 @@ public class FFSync {
                     }
                     else if (f.isDirectory()){
                         Map<String,Long> filesInDir2 = fillDirMap(f.getPath());
-                        filesInDir2.forEach((k,v)-> filesInDir.put(f.getName()+"/"+k,v)); //so esta a funcionar para windows
+                        filesInDir2.forEach((k,v)-> filesInDir.put(f.getName()+"/"+k,v));
                     }
                 }
             }
@@ -148,10 +159,9 @@ public class FFSync {
     public static boolean testConnection(String externalIP){
         try{
             InetAddress s = InetAddress.getByName(externalIP);
-            // System.out.println("Ligado!!!");
             return true;
         }
-        catch (IOException e) {/*System.out.println("Falhei!!!"); */return false;}
+        catch (IOException e) {return false;}
     }
 
     public static byte[] serialize(HashMap<String,Long> filesInDir) throws IOException {

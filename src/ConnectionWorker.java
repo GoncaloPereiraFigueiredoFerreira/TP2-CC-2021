@@ -1,10 +1,6 @@
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
-import java.net.http.HttpRequest;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -101,11 +97,11 @@ public class ConnectionWorker extends Thread {
             }
 
             if (handlePackage && receive) {
-                if (ftr.verifyPackage(dp.getData()) == FTrapid.WRopcode)
+                if (ftr.getOpcode(dp.getData()) == FTrapid.WRopcode)
                     receiveWriteRequest(dp);
-                else if (ftr.verifyPackage(dp.getData()) == FTrapid.SYNopcode)
+                else if (ftr.getOpcode(dp.getData()) == FTrapid.SYNopcode)
                     receiveSyn(dp);
-                else if (ftr.verifyPackage(dp.getData()) == FTrapid.ERRopcode)
+                else if (ftr.getOpcode(dp.getData()) == FTrapid.ERRopcode)
                     receiveError(dp);
             }
 
