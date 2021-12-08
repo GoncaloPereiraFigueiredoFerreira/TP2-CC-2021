@@ -58,8 +58,6 @@ public class FTrapid {
         out.putLong(data);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
-        System.out.println(Arrays.toString(out.array()));
-
         //Create HashCode
         StringBuilder sb = new StringBuilder();
         sb.append(opcode).append(port).append(data).append(filename).append((byte)0);
