@@ -423,7 +423,7 @@ public class FTrapid {
             //fica locked em caso de não receber nada (deveria ter um timeout) socket.setSoTimeout(10*1000);
             try{
              dS.receive(dPin);
-             dS.setSoTimeout(100);
+ /*            dS.setSoTimeout(100);
              DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
              boolean flag2=false;
              try{
@@ -433,7 +433,7 @@ public class FTrapid {
 
              if (flag2) dPin = dPin2;
 
-
+*/
             // 4º Traduzir Ack
             if (this.getOpcode(dPin.getData())==ACKopcode) {
                 short packet;
@@ -476,7 +476,7 @@ public class FTrapid {
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
             try {
                 dS.receive(dPin);
-
+/*
                 dS.setSoTimeout(100);
                 DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
                 boolean flag2=false;
@@ -486,7 +486,7 @@ public class FTrapid {
                 dS.setSoTimeout(2000);
 
                 if (flag2) dPin = dPin2;
-
+*/
                 nTimeouts=5;
                 // 2º Verificar Package Recebido e guardar
                 if (getOpcode(dPin.getData()) == 3) {
@@ -503,6 +503,7 @@ public class FTrapid {
                     }
                 }
             }catch (SocketTimeoutException e){
+
                 nTimeouts--;
                 if (nTimeouts == 0) throw new Exception("Número de timeout's ultrapassado");
             }
