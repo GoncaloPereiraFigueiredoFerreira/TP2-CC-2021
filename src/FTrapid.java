@@ -4,8 +4,8 @@ import java.net.DatagramSocket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 public class FTrapid {
 
@@ -51,13 +51,14 @@ public class FTrapid {
 
     private byte[] createRDWRPackage(String filename, short opcode, short port, long data){
         byte[] packet;
-        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.getBytes(StandardCharsets.UTF_8).length);
+        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.length()+20);
         if (opcode==1) out.put(RDopcode);
         else if (opcode==2) out.put(WRopcode);
         out.putShort(port);
         out.putLong(data);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
+
         //Create HashCode
         StringBuilder sb = new StringBuilder();
         sb.append(opcode).append(port).append(data).append(filename).append((byte)0);
@@ -404,20 +405,29 @@ public class FTrapid {
     public void sendData(byte[] msg) throws IOException {
         //1º convert msg to packets
         byte [][] packetsData = createDATAPackage(msg);
+        int maxTries=5;
+        dS.setSoTimeout(2000);
 
         //2º start loop of transfer
         boolean flag = true;
         for (short i =0; flag;){
+
             if (packetsData[i].length < MAXDATASIZE || i == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false;}
 
             DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length);
             dS.send(dPout);
 
-            // 3º Esperar por ACK // Esta parte deveria ser feita por outra thread
+            // 3º Esperar por ACK
             DatagramPacket dPin = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
 
             //fica locked em caso de não receber nada (deveria ter um timeout) socket.setSoTimeout(10*1000);
-            dS.receive(dPin);
+            try{
+             dS.receive(dPin);
+             dS.setSoTimeout(100);
+             try{
+                 while(true) dS.receive(dPin); //estas a reescrever pode dar merda
+             }catch (SocketTimeoutException ignored){}
+             dS.setSoTimeout(2000);
 
             // 4º Traduzir Ack
             if (this.getOpcode(dPin.getData())==ACKopcode) {
@@ -425,10 +435,14 @@ public class FTrapid {
 
                 try {
                     packet = readACKPacket(dPin.getData());
-                    if (packet == i) { i++; }
+                    if (i==packet) { i++;}
                 } catch (IntegrityException e) {
                     e.printStackTrace();
                 }
+            }
+            }catch (SocketTimeoutException e){
+                maxTries--;
+                if (maxTries == 0) throw new IOException("Timeouts Excedidos");
             }
         }
 
@@ -443,18 +457,27 @@ public class FTrapid {
      *     4. verify size, se o size < 514, transmition over, senao: 1.
      */
     public byte[] receiveData() throws Exception {
+        dS.setSoTimeout(2000);
         byte[] msg;
         byte [][] packets = new byte[MAXDATAPACKETSNUMBER][];
         short lastblock=0;
         boolean flag = true;
         DataPackageInfo info;
         int nTimeouts=5;
+        int expectedblock=0;
 
         // 1º Start loop
         while(flag){
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
             try {
                 dS.receive(dPin);
+                dS.setSoTimeout(100);
+                try{
+                    while(true) dS.receive(dPin); //estas a reescrever pode dar merda
+                }catch (SocketTimeoutException ignored){}
+                dS.setSoTimeout(2000);
+
+
                 nTimeouts=5;
                 // 2º Verificar Package Recebido e guardar
                 if (getOpcode(dPin.getData()) == 3) {
@@ -463,9 +486,15 @@ public class FTrapid {
                         flag = false;
                         lastblock = (short) info.getData().length;
                     }
-                    packets[info.getNrBloco()] = info.getData();
-                    DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
-                    dS.send(dPout);
+                    if (info.getNrBloco() == expectedblock){
+                        packets[info.getNrBloco()] = info.getData();
+                        DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
+                        dS.send(dPout);
+                        expectedblock++;
+                    }else if (info.getNrBloco() == expectedblock -1){
+                        DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
+                        dS.send(dPout);
+                    }
                 }
             }catch (SocketTimeoutException e){
                 nTimeouts--;
