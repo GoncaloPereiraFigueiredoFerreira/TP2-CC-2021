@@ -58,7 +58,9 @@ public class FTrapid {
         out.put((byte) 0);
 
         //Create HashCode
-        int hashcode = (String.valueOf(opcode) + port + data + filename + (byte) 0).hashCode();
+        StringBuilder sb = new StringBuilder();
+        sb.append(opcode).append(port).append(data).append(filename).append((byte)0);
+        int hashcode = sb.toString().hashCode();
         out.putInt(hashcode);
 
         packet = out.array();
@@ -108,8 +110,9 @@ public class FTrapid {
             ofset+=packetLength;
 
             //Create HashCode
-            String dados = new String(temp.array(),StandardCharsets.UTF_8);
-            int hashcode = (String.valueOf(DATAopcode) + i + packetLength + dados).hashCode();
+            StringBuilder sb = new StringBuilder();
+            sb.append(DATAopcode).append(i).append(packetLength).append(dados);
+            int hashcode = sb.toString().hashCode();
             out.putInt(hashcode);
 
             packets[i]=out.array();
@@ -160,8 +163,9 @@ public class FTrapid {
         out.put(filename.getBytes(StandardCharsets.UTF_8));
 
         //Create hashcode
-        int hashcode = (String.valueOf(ERRopcode) + error + filename + (byte) 0).hashCode();
-
+        StringBuilder sb = new StringBuilder();
+        sb.append(ERRopcode).append(error).append(filename).append((byte) 0);
+        int hashcode = sb.toString().hashCode();
         out.putInt(hashcode);
 
         packet = out.array();
@@ -190,9 +194,9 @@ public class FTrapid {
         out.put((byte) 0);
 
         //Create hashcode
-        int hashcode = (String.valueOf(SYNopcode) + port + filename + (byte) 0).hashCode();
-
-
+        StringBuilder sb = new StringBuilder();
+        sb.append(SYNopcode).append(port).append(filename).append((byte) 0);
+        int hashcode = sb.toString().hashCode();
         out.putInt(hashcode);
 
         packet = out.array();
@@ -219,7 +223,9 @@ public class FTrapid {
         out.put((byte) 0);
 
         //Create hashcode
-        int hashcode = (AUTopcode + password + (byte) 0).hashCode();
+        StringBuilder sb = new StringBuilder();
+        sb.append(AUTopcode).append(password).append((byte) 0);
+        int hashcode = sb.toString().hashCode();
         out.putInt(hashcode);
 
         packet = out.array();
@@ -256,7 +262,9 @@ public class FTrapid {
             hash =out.getInt();
 
             //verify Integrity
-            int generatedHash= (String.valueOf(out.get(0)) + port + data + ret + out.get(11 + length)).hashCode();
+            StringBuilder sb = new StringBuilder();
+            sb.append(out.get(0)).append(port).append(data).append(ret).append(out.get(11+length));
+            int generatedHash= sb.toString().hashCode();
             if (hash != generatedHash) throw new IntegrityException();
 
 
@@ -290,7 +298,9 @@ public class FTrapid {
             hash = out.getInt(5+length);
 
             //verify integrity
-            int generatedHash = (String.valueOf(opcode) + block + length + new String(msg, StandardCharsets.UTF_8)).hashCode();
+            StringBuilder sb = new StringBuilder();
+            sb.append(opcode).append(block).append(length).append(new String(msg,StandardCharsets.UTF_8));
+            int generatedHash = sb.toString().hashCode();
             if (generatedHash !=hash) throw new IntegrityException();
 
             par = new DataPackageInfo(block,msg);
@@ -338,7 +348,9 @@ public class FTrapid {
             hash = out.getInt(3+length+1);
 
             //verify integrity
-            int generatedHash = (String.valueOf(out.get(0)) + msg + filename + out.get(3 + length)).hashCode();
+            StringBuilder sb = new StringBuilder();
+            sb.append(out.get(0)).append(msg).append(filename).append(out.get(3+length));
+            int generatedHash = sb.toString().hashCode();
             if (generatedHash !=hash) throw new IntegrityException();
 
             ret= new ErrorSynPackageInfo(msg,filename);
@@ -366,7 +378,9 @@ public class FTrapid {
             hash=out.getInt();
 
             //verify integrity
-            int generatedHash = (out.get(0) + password + out.get(1 + length)).hashCode();
+            StringBuilder sb = new StringBuilder();
+            sb.append(out.get(0)).append(password).append(out.get(1+length));
+            int generatedHash = sb.toString().hashCode();
             if (hash != generatedHash) throw new IntegrityException();
         }else throw new IntegrityException();
         return password;
