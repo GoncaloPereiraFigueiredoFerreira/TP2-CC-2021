@@ -108,7 +108,7 @@ public class FTrapid {
             temp.put(data,ofset,packetLength);
             out.put(data,ofset,packetLength);
             ofset+=packetLength;
-
+            String dados = new String(temp.array(),StandardCharsets.UTF_8);
             //Create HashCode
             StringBuilder sb = new StringBuilder();
             sb.append(DATAopcode).append(i).append(packetLength).append(dados);
