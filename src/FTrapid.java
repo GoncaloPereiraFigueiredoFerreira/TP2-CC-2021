@@ -52,9 +52,6 @@ public class FTrapid {
     private byte[] createRDWRPackage(String filename, short opcode, short port, long data){
         byte[] packet;
         ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.getBytes(StandardCharsets.UTF_8).length);
-        System.out.println("FILENAME: " + filename + "  = "+ filename.getBytes(StandardCharsets.UTF_8).length);
-        System.out.println("FILENAMEBYTE: " + filename.length());
-        System.out.println("ByteSize: " + out.array().length );
         if (opcode==1) out.put(RDopcode);
         else if (opcode==2) out.put(WRopcode);
         out.putShort(port);
