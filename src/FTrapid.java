@@ -4,6 +4,8 @@ import java.net.DatagramSocket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class FTrapid {
 
@@ -49,13 +51,17 @@ public class FTrapid {
 
     private byte[] createRDWRPackage(String filename, short opcode, short port, long data){
         byte[] packet;
-        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.length());
+        ByteBuffer out = ByteBuffer.allocate(HEADERWRQ+ filename.getBytes(StandardCharsets.UTF_8).length);
+        System.out.println("FILENAME: " + filename + "  = "+ filename.getBytes(StandardCharsets.UTF_8).length);
+        System.out.println("FILENAMEBYTE: " + filename.length());
+        System.out.println("ByteSize: " + out.array().length );
         if (opcode==1) out.put(RDopcode);
         else if (opcode==2) out.put(WRopcode);
         out.putShort(port);
         out.putLong(data);
         out.put(filename.getBytes(StandardCharsets.UTF_8));
         out.put((byte) 0);
+        System.out.println(Arrays.toString(out.array()));
 
         //Create HashCode
         StringBuilder sb = new StringBuilder();
