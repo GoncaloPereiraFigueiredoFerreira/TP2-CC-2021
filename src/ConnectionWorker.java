@@ -15,7 +15,7 @@ public class ConnectionWorker extends Thread {
     private final Map<String,TransferWorker> requestsReceived; //Keeps track of the files received and the files that are being received
     private final boolean receiver;
 
-    ConnectionWorker(boolean receiver, String externalIP, String folderPath, Map<String, Long> filesInDir, DatagramSocket ds, FTrapid ftr, ReentrantLock readLock, ReentrantLock writeLock, Map<String, TransferWorker> requestsSent, Map<String, TransferWorker> requestsReceived) {
+    public ConnectionWorker(boolean receiver, String externalIP, String folderPath, Map<String, Long> filesInDir, DatagramSocket ds, FTrapid ftr, ReentrantLock readLock, ReentrantLock writeLock, Map<String, TransferWorker> requestsSent, Map<String, TransferWorker> requestsReceived) {
         this.receiver         = receiver;
         this.externalIP       = externalIP;
         this.folderPath       = folderPath;
