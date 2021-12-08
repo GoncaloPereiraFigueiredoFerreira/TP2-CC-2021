@@ -424,10 +424,15 @@ public class FTrapid {
             try{
              dS.receive(dPin);
              dS.setSoTimeout(100);
+             DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
+             boolean flag2=false;
              try{
-                 while(true) dS.receive(dPin); //estas a reescrever pode dar merda
+                 while(!flag2) {dS.receive(dPin2);flag2=true;} //estas a reescrever pode dar merda
              }catch (SocketTimeoutException ignored){}
              dS.setSoTimeout(2000);
+
+             if (flag2) dPin = dPin2;
+
 
             // 4º Traduzir Ack
             if (this.getOpcode(dPin.getData())==ACKopcode) {
@@ -472,11 +477,14 @@ public class FTrapid {
             try {
                 dS.receive(dPin);
                 dS.setSoTimeout(100);
+                DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
+                boolean flag2=false;
                 try{
-                    while(true) dS.receive(dPin); //estas a reescrever pode dar merda
+                    while(!flag2) {dS.receive(dPin2);flag2=true;} //estas a reescrever pode dar merda
                 }catch (SocketTimeoutException ignored){}
                 dS.setSoTimeout(2000);
 
+                if (flag2) dPin = dPin2;
 
                 nTimeouts=5;
                 // 2º Verificar Package Recebido e guardar
