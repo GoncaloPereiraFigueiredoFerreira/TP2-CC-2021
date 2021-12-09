@@ -420,20 +420,25 @@ public class FTrapid {
             // 3º Esperar por ACK
             DatagramPacket dPin = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
 
-            //fica locked em caso de não receber nada (deveria ter um timeout) socket.setSoTimeout(10*1000);
+
             try{
              dS.receive(dPin);
- /*            dS.setSoTimeout(100);
-             DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
+             maxTries=5;
+
+
+             dS.setSoTimeout(50);
+             DatagramPacket dPin2 = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
              boolean flag2=false;
              try{
-                 while(!flag2) {dS.receive(dPin2);flag2=true;} //estas a reescrever pode dar merda
-             }catch (SocketTimeoutException ignored){}
+                 while(!flag2) {
+                     dS.receive(dPin2);flag2=true;
+                 }
+             }catch (SocketTimeoutException e){System.out.println("Não duplicado!");}
              dS.setSoTimeout(2000);
 
              if (flag2) dPin = dPin2;
 
-*/
+
             // 4º Traduzir Ack
             if (this.getOpcode(dPin.getData())==ACKopcode) {
                 short packet;
@@ -476,17 +481,17 @@ public class FTrapid {
             DatagramPacket dPin = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
             try {
                 dS.receive(dPin);
-/*
-                dS.setSoTimeout(100);
+
+                dS.setSoTimeout(50);
                 DatagramPacket dPin2 = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
                 boolean flag2=false;
                 try{
                     while(!flag2) {dS.receive(dPin2);flag2=true;} //estas a reescrever pode dar merda
-                }catch (SocketTimeoutException ignored){}
+                }catch (SocketTimeoutException e){System.out.println("Não duplicado!");}
                 dS.setSoTimeout(2000);
 
                 if (flag2) dPin = dPin2;
-*/
+
                 nTimeouts=5;
                 // 2º Verificar Package Recebido e guardar
                 if (getOpcode(dPin.getData()) == 3) {
@@ -503,7 +508,6 @@ public class FTrapid {
                     }
                 }
             }catch (SocketTimeoutException e){
-
                 nTimeouts--;
                 if (nTimeouts == 0) throw new Exception("Número de timeout's ultrapassado");
             }
