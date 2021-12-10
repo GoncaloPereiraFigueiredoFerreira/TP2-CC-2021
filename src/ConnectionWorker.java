@@ -247,18 +247,4 @@ public class ConnectionWorker extends Thread {
 
         return ds;
     }
-
-    //TODO: implementar locks para fazer isto. Reutilizar isto para percorrer o map de requests e mandar novamente os requests
-    public void cleanTerminatedWorkers(Map<String,TransferWorker> requests){
-        for(Map.Entry<String,TransferWorker> entry : requests.entrySet()){
-            if(entry.getValue() != null && entry.getValue().getTWState() == TransferWorker.TWState.TERMINATED) {
-                try {
-                    entry.getValue().join();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                requestsSent.replace(entry.getKey(),null);
-            }
-        }
-    }
 }

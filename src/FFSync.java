@@ -5,22 +5,6 @@ import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class FFSync {
-    /*private class PacketResender extends TimerTask {
-        private final DatagramSocket ds;
-        private final Map<String,Long> files;
-        private final Map<Short,AbstractMap.SimpleEntry<DatagramSocket,PackageInfo>> packets;
-
-        PacketResender(DatagramSocket ds, Map<String,Long> files, Map<Short,AbstractMap.SimpleEntry<DatagramSocket,PackageInfo>> packets){
-            this.ds      = ds;
-            this.files   = files;
-            this.packets = packets;
-        }
-
-        @Override
-        public void run() {
-
-        }
-    }*/
     public static final int MAXTHREADSNUMBER = 60; //Cannot be inferior than 10
     public static final int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
 
@@ -82,7 +66,7 @@ public class FFSync {
 
             //Decides the order in which it will receive the map of files from the other client
             if(ds.getLocalAddress().getHostAddress().compareTo(externalIP) < 0) {
-                ftr.sendData(serialize((HashMap<String, Long>) filesInDir));
+                ftr.sendData(serialize(filesInDir));
                 try {
                     filesInDirReceived = deserialize(ftr.receiveData());
                 } catch (Exception e) {
@@ -96,7 +80,7 @@ public class FFSync {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-                ftr.sendData(serialize((HashMap<String, Long>) filesInDir));
+                ftr.sendData(serialize(filesInDir));
             }
 
             //Corrects the map of files that need to be sent
@@ -163,13 +147,19 @@ public class FFSync {
         catch (IOException e) {return false;}
     }
 
-    public static byte[] serialize(HashMap<String,Long> filesInDir) throws IOException {
+    public static byte[] serialize(Map<String,Long> filesInDir) throws IOException {
         byte[] bytes;
         ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
         ObjectOutputStream out = new ObjectOutputStream(byteOut);
 
-        out.writeObject(filesInDir);
+        out.writeInt(filesInDir.size());
 
+        for(Map.Entry<String,Long> entry : filesInDir.entrySet()){
+            out.writeUTF(entry.getKey());
+            out.writeLong(entry.getValue());
+        }
+
+        out.flush();
         bytes = byteOut.toByteArray();
         out.close();
         byteOut.close();
@@ -177,16 +167,18 @@ public class FFSync {
         return bytes;
     }
 
-    public static Map<String,Long> deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
-        Map<String,Long> map;
+    public static Map<String,Long> deserialize(byte[] bytes) throws IOException {
+        Map<String, Long> map = new HashMap<>();
         ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
         ObjectInputStream in = new ObjectInputStream(byteIn);
 
-        map = (HashMap<String,Long>) in.readObject();
+        int nFiles = in.readInt();
+
+        for (;nFiles > 0;nFiles--)
+            map.put(in.readUTF(),in.readLong());
 
         byteIn.close();
         in.close();
-
         return map;
     }
 
