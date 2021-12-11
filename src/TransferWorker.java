@@ -15,11 +15,12 @@ public class TransferWorker extends Thread{
     private final DatagramSocket ds; //socket used to connect with the other client
     private final FTrapid ftr;
     private final ReentrantLock sendLock;
+    private final String externalIP;
 
     private final int MAXDATAPERCONNECTION = FTrapid.MAXDATA * FTrapid.MAXDATAPACKETSNUMBER; //limit of bytes sent by FTrapid in one connection
 
 
-    public TransferWorker(ThreadGroup tg, boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds, ReentrantLock sendLock){
+    public TransferWorker(ThreadGroup tg, boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds, String externalIP, ReentrantLock sendLock){
         super(tg,filename);
         this.state      = TWState.NEW;
         this.requester  = requester;
@@ -29,6 +30,7 @@ public class TransferWorker extends Thread{
         this.ds         = ds;
         this.ftr        = new FTrapid(ds);
         this.sendLock   = sendLock;
+        this.externalIP = externalIP;
     }
 
     /* ******** Main Methods ******** */
@@ -249,7 +251,7 @@ public class TransferWorker extends Thread{
             try {
                 espi = ftr.analyseAnswer(dp);
                 if(filename.equals(espi.getFilename())) {
-                    this.connectToPort(dp.getAddress().getHostAddress(), dp.getPort());
+                    this.connectToPort(externalIP, dp.getPort());
                     return true;
                 }
                 else return false;

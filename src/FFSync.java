@@ -153,7 +153,7 @@ public class FFSync {
             }
 
             //Creates a Transfer Worker. This worker is responsible for sending the file to the other client, after performing a request to the other client, and receiving confirmation(SYN).
-            TransferWorker tw = new TransferWorker(senders, true, false, folderPath, filename, datagramSocket, sendLock);
+            TransferWorker tw = new TransferWorker(senders, true, false, folderPath, filename, datagramSocket, externalIP, sendLock);
             tw.connectToPort(externalIP, REQUESTSPORT);
             tw.start();
             requestsSent.put(filename, tw);

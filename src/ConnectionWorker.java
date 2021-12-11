@@ -81,7 +81,7 @@ public class ConnectionWorker extends Thread {
             //Ignores duplicates. Expects resends from the receiver (TransferWorker) created.
             if (!requestsReceived.containsKey(filename)) {
                 dsTransferWorker = FFSync.createDatagramSocket();
-                TransferWorker tw = new TransferWorker(receivers, false, true, folderPath, filename, dsTransferWorker, sendLock);
+                TransferWorker tw = new TransferWorker(receivers, false, true, folderPath, filename, dsTransferWorker, externalIP, sendLock);
                 tw.connectToPort(externalIP, rpi.getPort());
 
                 //TODO: Adicionar sleep caso não hajam threads para responder às necessidades dos requests. N deve ser preciso, o outro cliente tem lock para o numero de threads a enviar e o receive é bloqueante
