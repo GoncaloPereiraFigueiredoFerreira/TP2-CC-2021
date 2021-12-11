@@ -452,7 +452,7 @@ public class FTrapid {
     }
 
 
-    public byte[] receiveData() throws Exception {
+    public byte[] receiveData() throws SocketTimeoutException, Exception {
         dS.setSoTimeout(2000);
         byte[] msg;
         byte [][] packets = new byte[MAXDATAPACKETSNUMBER][];

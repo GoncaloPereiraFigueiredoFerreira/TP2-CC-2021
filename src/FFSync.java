@@ -2,11 +2,15 @@ import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+
+import static java.lang.Thread.sleep;
 
 public class FFSync {
     public static final int MAXTHREADSNUMBER = 60; //Cannot be inferior than 10
     public static final int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
+    private static final int REQUESTSPORT = 9999;
 
     public static void main(String[] args) {
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
@@ -28,8 +32,8 @@ public class FFSync {
 
         //Initiates connection with the other client
         try {
-            ds = new DatagramSocket(9999);
-            ds.connect(InetAddress.getByName(externalIP),9999);
+            ds = new DatagramSocket(REQUESTSPORT);
+            ds.connect(InetAddress.getByName(externalIP),REQUESTSPORT);
             ds.setSoTimeout(10000); //10 seconds timeout
         }
         catch (SocketException e){
@@ -62,18 +66,16 @@ public class FFSync {
         filesInDir = getFilesToBeSent(ftr, ds.getLocalAddress().getHostAddress(), externalIP, folderPath);
         if(filesInDir == null) return;
 
-        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
-        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
+        //Starts a connection worker. This worker is responsible for answering requests
+        ConnectionWorker cw = new ConnectionWorker(receivers, externalIP, folderPath, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
+        cw.start();
 
-        receiver.start();
-        sender.start();
+        //Starts threads for each file that needs to be sent, taking into account the number of threads established
+        sendWriteRequests(externalIP, sendLock, folderPath, filesInDir, requestsSent, senders);
 
-        try {
-            receiver.join();
-            sender.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        //Waits for connection worker to finish
+        try { cw.join(); }
+        catch (InterruptedException ignored) {}
     }
 
     /* ******** Main Methods ******** */
@@ -123,8 +125,68 @@ public class FFSync {
         return filesInDir;
     }
 
+    private static void sendWriteRequests(String externalIP, ReentrantLock sendLock, String folderPath, Map<String,Long> filesInDir, Map<String,TransferWorker> requestsSent, ThreadGroup senders) {
+        DatagramSocket datagramSocket;
+
+        Iterator<Map.Entry<String,Long>> it = filesInDir.entrySet().iterator();
+        Map.Entry<String,Long> entry; String filename;
+
+        while(it.hasNext()) {
+            entry = it.next();
+            filename = entry.getKey();
+
+            //Gets local usable port for a new transfer worker
+            datagramSocket = createDatagramSocket();
+            while (datagramSocket == null) {
+                //Sleeps 1 second and tries to get a valid socket again
+                try {
+                    sleep(500);
+                } catch (InterruptedException ignored) {
+                }
+                datagramSocket = createDatagramSocket();
+            }
+
+            //Waits for threads(senders) to be available
+            while (senders.activeCount() >= FFSync.MAXTHREADSNUMBERPERFUNCTION) {
+                try   {sleep(500);}
+                catch (InterruptedException ignored) {} //Maybe use condition.signal
+            }
+
+            //Creates a Transfer Worker. This worker is responsible for sending the file to the other client, after performing a request to the other client, and receiving confirmation(SYN).
+            TransferWorker tw = new TransferWorker(senders, true, false, folderPath, filename, datagramSocket, sendLock);
+            tw.connectToPort(externalIP, REQUESTSPORT);
+            tw.start();
+            requestsSent.put(filename, tw);
+
+            //Removes the file from the "queue"
+            it.remove();
+        }
+
+        System.out.println("Finished sending requests!");
+    }
 
     /* ******** Auxiliar Methods ******** */
+
+    /*
+    *Returns DatagramSocket with the first non-privileged available port.
+    *Returns null if there isnt an available port
+     */
+    public static DatagramSocket createDatagramSocket() {
+        boolean validPort = false;
+        DatagramSocket ds = null;
+        for (int port = 1024; !validPort && port <= 32767; port++) {
+            try {
+                ds = new DatagramSocket(port);
+                validPort = true;
+            } catch (SocketException ignored) {}
+        }
+
+        return ds;
+    }
+
+    public static String[] pathToArray(String path){
+        return path.split("/");
+    }
 
     private static Map<String,Long> fillDirMap(String path){
         Map<String,Long> filesInDir = new HashMap<>();
@@ -149,10 +211,6 @@ public class FFSync {
         else return null;
 
         return filesInDir;
-    }
-
-    public static String[] pathToArray(String path){
-        return path.split("/");
     }
 
     private static byte[] serialize(Map<String,Long> filesInDir) throws IOException {

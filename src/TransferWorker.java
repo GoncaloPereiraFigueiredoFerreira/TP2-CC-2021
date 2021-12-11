@@ -1,10 +1,8 @@
 import java.io.*;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class TransferWorker extends Thread{
     private TWState state;
@@ -15,41 +13,60 @@ public class TransferWorker extends Thread{
     private final String folderPath; //path to the shared folder
     private final String filename;   //path to the file wished to be read/written within the shared folder
     private final DatagramSocket ds; //socket used to connect with the other client
-    private final FTrapid ftrapid;
+    private final FTrapid ftr;
+    private final ReentrantLock sendLock;
 
     private final int MAXDATAPERCONNECTION = FTrapid.MAXDATA * FTrapid.MAXDATAPACKETSNUMBER; //limit of bytes sent by FTrapid in one connection
 
-    public TransferWorker(boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds){
+
+    public TransferWorker(ThreadGroup tg, boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds, ReentrantLock sendLock){
+        super(tg,filename);
         this.state      = TWState.NEW;
         this.requester  = requester;
         this.receiver   = receiver;
         this.folderPath = folderPath;
         this.filename   = filename;
         this.ds         = ds;
-        this.ftrapid    = new FTrapid(ds);
+        this.ftr        = new FTrapid(ds);
+        this.sendLock   = sendLock;
     }
 
-    private String filePathgenerator (String filename,boolean receiver){
-        String separator;
-        if(!System.getProperty("file.separator").equals("/") ) separator="\\";
-        else separator = "/";
-        String[] ar = FFSync.pathToArray(filename);
-        StringBuilder sb = new StringBuilder();
-        sb.append(folderPath);
-        for (int i = 0; i < ar.length ;i++) {
-            if (receiver && i !=0 && i == ar.length - 1) {
-                File f2 = new File(sb.toString());
-                f2.mkdirs();
+    /* ******** Main Methods ******** */
+
+    public void run() {
+        state = TWState.RUNNING;
+
+        //Verifies the value of mode, to select the behaviour of the thread
+        if(requester) {
+            if(receiver) {
+                //(CHECK) send ACK?
+                runReceiveFile();
             }
-            sb.append(separator).append(ar[i]);
+            else {
+                runSendFile();
+                System.out.println(filename + " sent!");
+            }
+        }
+        else {
+            if(receiver) {
+                runReceiveFile();
+                System.out.println("Received " + filename + "!");
+            }
+            else {
+                //(CHECK) receive ack?
+                runSendFile();
+            }
         }
 
-        return sb.toString();
+        state = TWState.TERMINATED;
+        closeSocket();
     }
 
-
     // ********************** TODO não esquecer tratar das excecoes *************
-    /* Executed to send a file */
+    /*
+    * Executed to send a file.
+    * DatagramSocket should be connected initially to the port responsible for receiving the requests
+     */
     private void runSendFile() {
         byte[] buffer = null;
 
@@ -70,6 +87,29 @@ public class TransferWorker extends Thread{
             return;
         }
 
+
+        //Sends request and waits for a SYN
+        int nrTimeouts = 10;
+
+        try {
+            ds.setSoTimeout(250);
+
+            while (nrTimeouts > 0) {
+                try {
+                    sendLock.lock();
+                    ftr.requestRRWR(filename, (short) ds.getPort(), (short) 2, 0);
+                }
+                catch (OpcodeNotRecognizedException | IOException ignored) {}
+                finally { sendLock.unlock(); }
+
+                try { if(receivedSyn()) nrTimeouts = 0; }
+                catch (SocketTimeoutException ste) { nrTimeouts--; }
+            }
+
+        } catch (IOException ioe) {
+            System.out.println("Connection error: " + filename);
+        }
+
         //Number of calls of the function 'sendData' from the class FTrapid
         fileLength = file.length();
         int nrCalls = (int) (fileLength / MAXDATAPERCONNECTION);
@@ -87,7 +127,7 @@ public class TransferWorker extends Thread{
                 closeSocket();
             }
             try {
-                ftrapid.sendData(buffer);
+                ftr.sendData(buffer);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -106,7 +146,7 @@ public class TransferWorker extends Thread{
         }
 
         try {
-            ftrapid.sendData(buffer);
+            ftr.sendData(buffer);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -120,19 +160,20 @@ public class TransferWorker extends Thread{
         }
     }
 
-
     /*
-    *Executed to read a file
-    *Writes, the bytes received, to a file
+    * Executed to read a file
+    * Writes, the bytes received, to a file
+    * DatagramSocket (this.ds) should be connected to the other client's thread that is responsible for sending the file. FTrapid (this.ftr) should be created with the DatagramSocket refered before.
      */
-    private void runReceiveFile(){
-        byte[] buffer = null;
+    private void runReceiveFile() {
+        byte[] buffer;
         boolean keepWriting = true;
-        FileOutputStream fops = null;
 
+        //Creates needed directories to write file
+        FileOutputStream fops;
         try {
-            String filepath = filePathgenerator(filename,true);
-            fops = new FileOutputStream(filepath);
+            String filepath = filePathgenerator(filename, true);
+            fops            = new FileOutputStream(filepath);
         } catch (FileNotFoundException e) {
             state = TWState.ERROROCURRED;
             System.out.println("Error creating/opening file: " + filename);
@@ -141,59 +182,103 @@ public class TransferWorker extends Thread{
             return;
         }
 
-        while(keepWriting) {
+        //Defines timeouts
+        int nrTimeouts = 5;
+        try{ ds.setSoTimeout(250); }
+        catch (SocketException se){
+            System.out.println("Connection error! (file: " + filename);
+            keepWriting = false;
+        }
+
+        //Sends First SYN
+        try {
+            sendLock.lock();
+            ftr.answer((short) 2, (short) ds.getLocalPort() , filename);
+        } catch (OpcodeNotRecognizedException | IOException ignored) {
+        } finally { sendLock.unlock(); }
+
+        //Receives files packages
+        while (keepWriting) {
             try {
-                buffer = ftrapid.receiveData();
+                buffer = ftr.receiveData();
                 fops.write(buffer);
                 fops.flush();
+
+                //will keep receiving until the length, of the received buffer, is different than MAXDATAPERCONNECTION
+                if (buffer.length < MAXDATAPERCONNECTION) keepWriting = false;
+
+            } catch (SocketTimeoutException ste){
+                if(nrTimeouts == 0) {
+                    keepWriting = false;
+                    System.out.println("Connection error! (file: " + filename);
+                }
+                else {
+                    nrTimeouts--;
+                    try {
+                        sendLock.lock();
+                        ftr.answer((short) 2, (short) ds.getLocalPort() , filename);
+                    } catch (OpcodeNotRecognizedException | IOException ignored) {
+                    } finally { sendLock.unlock(); }
+                }
             } catch (Exception e) {
                 state = TWState.ERROROCURRED;
                 System.out.println("Error writing file: " + filename);
-                if(new File(filename).delete()) System.out.println("Corrupted file deleted!");
+                if (new File(filename).delete()) System.out.println("Corrupted file (" + filename + ") deleted!");
                 //TODO: Enviar erro para cancelar a transferencia
                 closeSocket();
                 return;
             }
-
-            //will keep receiving until the length, of the received buffer, is different than MAXDATAPERCONNECTION
-            if(buffer.length < MAXDATAPERCONNECTION) keepWriting = false;
         }
 
-        closeSocket();
+        try { fops.close(); }
+        catch (IOException ignored) {}
 
-        try { fops.close(); } catch (IOException ignored){}
-    }
-
-    public void run() {
-        state = TWState.RUNNING;
-
-        //Verifies the value of mode, to select the behaviour of the thread
-        if(requester) {
-            if(receiver) {
-                //(CHECK) send ACK?
-                runReceiveFile();
-            }
-            else {
-                runSendFile();
-                System.out.println("File sent!");
-            }
-        }
-        else {
-            if(receiver) {
-                runReceiveFile();
-                System.out.println("Received file!");
-            }
-            else {
-                //(CHECK) receive ack?
-                runSendFile();
-            }
-        }
-
-        state = TWState.TERMINATED;
         closeSocket();
     }
 
     /* ********** Auxiliar Methods ********** */
+
+    //Checks if the correct SYN was received. Connects to the correct port.
+    private boolean receivedSyn() throws IOException {
+        DatagramPacket dp = new DatagramPacket(new byte[FTrapid.MAXSYNSIZE], FTrapid.MAXSYNSIZE);
+
+        ds.receive(dp);
+
+        if (ftr.getOpcode(dp.getData()) == FTrapid.SYNopcode) {
+            ErrorSynPackageInfo espi;
+            try {
+                espi = ftr.analyseAnswer(dp);
+                if(filename.equals(espi.getFilename())) {
+                    this.connectToPort(dp.getAddress().getHostAddress(), dp.getPort());
+                    return true;
+                }
+                else return false;
+            } catch (IntegrityException | OpcodeNotRecognizedException ignored) {
+                //OpcodeNotRecognizedException doesn't happen in here. Checked in the caller function
+                //Ignores integrity exception, and expects resend
+            }
+        }
+
+        return false;
+    }
+
+    private String filePathgenerator (String filename,boolean receiver){
+        String separator;
+        if(!System.getProperty("file.separator").equals("/") ) separator="\\";
+        else separator = "/";
+        String[] ar = FFSync.pathToArray(filename);
+        StringBuilder sb = new StringBuilder();
+        sb.append(folderPath);
+        for (int i = 0; i < ar.length ;i++) {
+            if (receiver && i !=0 && i == ar.length - 1) {
+                File f2 = new File(sb.toString());
+                f2.mkdirs();
+            }
+            sb.append(separator).append(ar[i]);
+        }
+
+        return sb.toString();
+    }
 
     public String getFileName(){
         return this.filename;
