@@ -18,15 +18,16 @@ public class FTrapid {
     public static final byte SYNopcode  = 6;
     public static final byte AUTopcode  = 7;
 
-    public static final int MAXRDWRSIZE=514; // n sei
-    public static final int MAXDATASIZE=1024;
-    public static final int MAXDATA = 1015;
-    public static final int MAXACKSIZE=3;
-    public static final int MAXERRORSIZE=514;
-    public static final int MAXSYNSIZE=514;
-    public static final int MAXAUTSIZE=514;
+    public static final int MAXRDWRSIZE  = 514;
+    public static final int MAXDATASIZE  = 1024;
+    public static final int MAXDATA      = 1015;
+    public static final int MAXACKSIZE   = 3;
+    public static final int MAXERRORSIZE = 514;
+    public static final int MAXSYNSIZE   = 514;
+    public static final int MAXAUTSIZE   = 514;
+
+    private static final int HEADERWRQ   = 16;
     public static final int MAXDATAPACKETSNUMBER = 32768;
-    private static final int HEADERWRQ = 16;
 
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
@@ -313,7 +314,7 @@ public class FTrapid {
 
     /*
      *
-     * Intrepreta pacotes de ACK
+     * Interpreta pacotes de ACK
      *
      */
 
@@ -329,7 +330,7 @@ public class FTrapid {
 
     /*
      *
-     * Intrepreta pacotes de ERROR
+     * Interpreta pacotes de ERROR
      *
      */
 
@@ -392,15 +393,7 @@ public class FTrapid {
     ///////////////////////// Transmition Control ///////////////////////
 
         //////////Methods for workers/////
-    /*     * SEND:
-     *
-     *     1. send data
-     *     2. wait for ack
-     *     3. verify size, se o size < 514, transmition over, senao: 2.
-     *
-     *     1º Versão sequencial para testes
-     *     - O protocolo deverá enviar os pacotes e verificar acks ao msm tempo
-     */
+
 
     public void sendData(byte[] msg) throws IOException {
         //1º convert msg to packets
@@ -459,13 +452,6 @@ public class FTrapid {
     }
 
 
-    /*     * RECEIVE :
-     *
-     *     1. timeout for DATA
-     *     2. receive DATA
-     *     3. send ACK
-     *     4. verify size, se o size < 514, transmition over, senao: 1.
-     */
     public byte[] receiveData() throws Exception {
         dS.setSoTimeout(2000);
         byte[] msg;
