@@ -11,10 +11,12 @@ public class FFSync {
     public static void main(String[] args) {
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
         String externalIP = args[1];
-        ReentrantLock readLock = new ReentrantLock();
-        ReentrantLock writeLock = new ReentrantLock();
-        Map<String,TransferWorker> requestsSent = new HashMap<>();
+        ReentrantLock receiveLock = new ReentrantLock();
+        ReentrantLock sendLock    = new ReentrantLock();
+        ThreadGroup senders       = new ThreadGroup("FFSyncSenders");
+        ThreadGroup receivers     = new ThreadGroup("FFSyncReceivers");
         Map<String,TransferWorker> requestsReceived = new HashMap<>();
+        Map<String,TransferWorker> requestsSent     = new HashMap<>();
         Map<String,Long> filesInDir;
         DatagramSocket ds;
 
@@ -24,13 +26,14 @@ public class FFSync {
             return;
         }
 
+        //Initiates connection with the other client
         try {
             ds = new DatagramSocket(9999);
             ds.connect(InetAddress.getByName(externalIP),9999);
-            ds.setSoTimeout(10000); //10 seg de timeout
+            ds.setSoTimeout(10000); //10 seconds timeout
         }
         catch (SocketException e){
-            System.out.println("Error opening connection socket");
+            System.out.println("Error opening connection socket!");
             return;
         }
         catch (Exception e) {
@@ -38,11 +41,11 @@ public class FFSync {
             return;
         }
 
-        ///Authentication Block
+        //Authentication Block
         FTrapid ftr = new FTrapid(ds);
-        Scanner sc = new Scanner(System.in);
+        Scanner sc  = new Scanner(System.in);
         System.out.print("Introduza a sua password, em ambas as maquinas: ");
-        String pass = sc.next();
+        String pass = sc.next(); sc.close();
         try {
            if (ftr.authentication(pass)!=1) {
                System.out.println("Palavra passe errada");
@@ -55,46 +58,12 @@ public class FFSync {
         }
         System.out.println("Sucesso na autenticação!!");
 
-        try {
-            //Fills the map with the files present in the given directory
-            if((filesInDir = fillDirMap(folderPath)) == null) {
-                System.out.println("Not a directory!");
-                return;
-            }
+        //Fills the map with the files present in the given directory
+        filesInDir = getFilesToBeSent(ftr, ds.getLocalAddress().getHostAddress(), externalIP, folderPath);
+        if(filesInDir == null) return;
 
-            Map<String, Long> filesInDirReceived = null;
-
-            //Decides the order in which it will receive the map of files from the other client
-            if(ds.getLocalAddress().getHostAddress().compareTo(externalIP) < 0) {
-                ftr.sendData(serialize(filesInDir));
-                try {
-                    filesInDirReceived = deserialize(ftr.receiveData());
-                } catch (Exception e) {
-                    System.out.println("Error sending/receiving list of files!");
-                    return;
-                }
-            }
-            else{
-                try {
-                    filesInDirReceived = deserialize(ftr.receiveData());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-                ftr.sendData(serialize(filesInDir));
-            }
-
-            //Corrects the map of files that need to be sent
-            if (filesInDirReceived != null) {
-                analyse(filesInDir,filesInDirReceived);
-            }
-        }catch (Exception e ) {
-            System.out.println("Error sending/receiving list of files!");
-            return;
-        }
-
-
-        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, ftr, readLock, writeLock, requestsSent, requestsReceived);
-        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, ftr, readLock, writeLock, requestsSent, requestsReceived);
+        ConnectionWorker receiver = new ConnectionWorker(true, externalIP, folderPath, filesInDir, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
+        ConnectionWorker sender   = new ConnectionWorker(false, externalIP, folderPath, filesInDir, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
 
         receiver.start();
         sender.start();
@@ -107,10 +76,57 @@ public class FFSync {
         }
     }
 
+    /* ******** Main Methods ******** */
+
+    public static boolean testConnection(String externalIP){
+        try{
+            InetAddress s = InetAddress.getByName(externalIP);
+            return true;
+        }
+        catch (IOException e) {return false;}
+    }
+
+    private static Map<String,Long> getFilesToBeSent(FTrapid ftr, String localIP, String externalIP, String folderPath) {
+        Map<String, Long> filesInDir = fillDirMap(folderPath),
+                          filesInDirReceived;
+
+        //Fills the map with the files present in the given directory
+        if (filesInDir == null) {
+            System.out.println("Not a directory!");
+            return null;
+        }
+
+        //Decides the order in which it will receive the map of files from the other client
+        try {
+            if (localIP.compareTo(externalIP) < 0) {
+                ftr.sendData(serialize(filesInDir));
+                filesInDirReceived = deserialize(ftr.receiveData());
+            } else {
+                filesInDirReceived = deserialize(ftr.receiveData());
+                ftr.sendData(serialize(filesInDir));
+            }
+        } catch (Exception e) {
+            System.out.println("Error sending/receiving list of files!");
+            return null;
+        }
+
+        //Corrects the map of files that need to be sent
+        //Removes all the files from the first map, that match the name of a file from the other machine, but are not as recent
+        String filename;
+        for (Map.Entry<String, Long> entry : filesInDirReceived.entrySet()) {
+            filename = entry.getKey();
+            //Checks for the existence of the file. If the file exists, compares the dates when they were last modified.
+            if (filesInDir.containsKey(filename) && filesInDir.get(filename) < entry.getValue())
+                filesInDir.remove(filename);
+        }
+
+        return filesInDir;
+    }
+
+
     /* ******** Auxiliar Methods ******** */
 
-
-    public static Map<String,Long> fillDirMap(String path){
+    private static Map<String,Long> fillDirMap(String path){
         Map<String,Long> filesInDir = new HashMap<>();
         File dir = new File(path);
         System.out.println(File.separator);
@@ -139,15 +155,7 @@ public class FFSync {
         return path.split("/");
     }
 
-    public static boolean testConnection(String externalIP){
-        try{
-            InetAddress s = InetAddress.getByName(externalIP);
-            return true;
-        }
-        catch (IOException e) {return false;}
-    }
-
-    public static byte[] serialize(Map<String,Long> filesInDir) throws IOException {
+    private static byte[] serialize(Map<String,Long> filesInDir) throws IOException {
         byte[] bytes;
         ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
         ObjectOutputStream out = new ObjectOutputStream(byteOut);
@@ -167,7 +175,7 @@ public class FFSync {
         return bytes;
     }
 
-    public static Map<String,Long> deserialize(byte[] bytes) throws IOException {
+    private static Map<String,Long> deserialize(byte[] bytes) throws IOException {
         Map<String, Long> map = new HashMap<>();
         ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
         ObjectInputStream in = new ObjectInputStream(byteIn);
@@ -180,48 +188,5 @@ public class FFSync {
         byteIn.close();
         in.close();
         return map;
-    }
-
-    //Receives 2 maps, one containing all the files present in the machine's given folder, and another containing all the files the other machine's can share
-    //Removes all the files from the first map, that match the name of a file from the other machine, but are not as recent
-    public static void analyse(Map<String,Long> filesInDir, Map<String,Long> filesInDirReceived) {
-        String filename;
-
-        for(Map.Entry<String,Long> entry : filesInDirReceived.entrySet()) {
-            filename = entry.getKey();
-            //Checks for the existence of the file. If the file exists, compares the dates when they were last modified.
-            if (filesInDir.containsKey(filename) && filesInDir.get(filename) < entry.getValue())
-                filesInDir.remove(filename);
-        }
-    }
-
-    /* ******** Test Methods ******** */
-
-    public static void generateFile(String filepath, int length){
-        File file = new File(filepath);
-        try {
-            file.createNewFile();
-        } catch (IOException e) {
-            System.out.println("Couldnt create file");
-            return;
-        }
-        FileOutputStream fops = null;
-
-        try {
-            fops = new FileOutputStream(file);
-        } catch (FileNotFoundException e) {
-            System.out.println("Error creating/opening file: " + filepath);
-            return;
-        }
-        try {
-            byte[] buffer = new byte[length];
-            Random rand = new Random();
-            rand.nextBytes(buffer);
-            fops.write(buffer);
-            fops.flush();
-        } catch (IOException e) {
-            System.out.println("Error writing file : " + filepath);
-            return;
-        }
     }
 }
