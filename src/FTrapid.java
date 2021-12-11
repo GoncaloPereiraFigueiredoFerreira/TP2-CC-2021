@@ -494,8 +494,11 @@ public class FTrapid {
                     }
                 }
             }catch (SocketTimeoutException e){
-                nTimeouts--;
-                if (nTimeouts == 0) throw new Exception("Número de timeout's ultrapassado");
+                if (expectedblock == 0) throw new SocketTimeoutException();
+                else{
+                    nTimeouts--;
+                    if (nTimeouts == 0) throw new Exception("Número de timeout's ultrapassado");
+                }
             }
             catch (IntegrityException i){System.out.println(i.getMessage());}
         }
