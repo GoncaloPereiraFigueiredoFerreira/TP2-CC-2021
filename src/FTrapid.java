@@ -1,6 +1,7 @@
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +11,9 @@ import java.util.Map;
 public class FTrapid {
 
     private final DatagramSocket dS;
+    private String externalIP;
+    private short externalPort;
+
     public static final byte RDopcode   = 1;
     public static final byte WRopcode   = 2;
     public static final byte DATAopcode = 3;
@@ -32,9 +36,20 @@ public class FTrapid {
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
     }
-
+    public FTrapid(DatagramSocket ds, String externalIP, short externalPort){
+        this.dS = ds;this.externalIP = externalIP; this.externalPort=externalPort;
+    }
     //DatagraSocket Sender Size =  65535 B ≃ 64KB
     //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
+
+    public void setExternalIP(String externalIP) {
+        this.externalIP = externalIP;
+    }
+
+    public void setExternalPort(short externalPort) {
+        this.externalPort = externalPort;
+    }
+
 
     /////////////////////// Definição dos pacotes///////////////////////////
 
@@ -407,7 +422,7 @@ public class FTrapid {
 
             if (packetsData[i].length < MAXDATASIZE || i == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false;}
 
-            DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length);
+            DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length, InetAddress.getByName(externalIP), externalPort);
             dS.send(dPout);
 
             // 3º Esperar por ACK
@@ -488,7 +503,7 @@ public class FTrapid {
                     }
                     if (info.getNrBloco() == expectedblock){
                         packets[info.getNrBloco()] = info.getData();
-                        DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE);
+                        DatagramPacket dPout = new DatagramPacket(createACKPackage(info.getNrBloco()), MAXACKSIZE, InetAddress.getByName(externalIP), externalPort);
                         dS.send(dPout);
                         expectedblock++;
                     }
@@ -522,7 +537,7 @@ public class FTrapid {
 
     public int authentication(String password) throws  Exception{
         byte[] autP = createAUTPackage(password);
-        DatagramPacket dOUT = new DatagramPacket(autP,autP.length);
+        DatagramPacket dOUT = new DatagramPacket(autP,autP.length, InetAddress.getByName(externalIP), externalPort);
         DatagramPacket dIN  = new DatagramPacket(new byte[MAXAUTSIZE],MAXAUTSIZE);
         boolean flag = true;
         int ret=-1;
@@ -555,7 +570,7 @@ public class FTrapid {
         if (mode == 1) request = createRDWRPackage(filename,RDopcode,port,data);
         else if (mode == 2) request = createRDWRPackage(filename,WRopcode,port,data);
         else throw new OpcodeNotRecognizedException();
-        dS.send(new DatagramPacket(request, request.length));
+        dS.send(new DatagramPacket(request, request.length, InetAddress.getByName(externalIP), externalPort));
     }
 
     /*
@@ -574,7 +589,7 @@ public class FTrapid {
        if (mode == 1) packet= createERRORPackage(msg,filename);
        else if (mode ==2) packet = createSYNPackage(msg,filename);
        else throw new OpcodeNotRecognizedException();
-       dS.send(new DatagramPacket(packet,packet.length));
+       dS.send(new DatagramPacket(packet,packet.length, InetAddress.getByName(externalIP), externalPort));
    }
 
    /*

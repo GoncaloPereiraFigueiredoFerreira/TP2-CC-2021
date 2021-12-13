@@ -10,9 +10,9 @@ import static java.lang.Thread.sleep;
 public class FFSync {
     public static final int MAXTHREADSNUMBER = 60; //Cannot be inferior than 10
     public static final int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
-    private static final int REQUESTSPORT = 9999;
+    private static final int REQUESTSPORT = 11111;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws UnknownHostException {
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
         String externalIP = args[1];
         ReentrantLock receiveLock = new ReentrantLock();
@@ -33,7 +33,8 @@ public class FFSync {
         //Initiates connection with the other client
         try {
             ds = new DatagramSocket(REQUESTSPORT);
-            ds.connect(InetAddress.getByName(externalIP),REQUESTSPORT);
+            //TODO: Nao se pode usar connect, usar dados no datagramPacket
+            //ds.connect(InetAddress.getByName(externalIP),REQUESTSPORT);
             ds.setSoTimeout(10000); //10 seconds timeout
         }
         catch (SocketException e){
@@ -46,15 +47,15 @@ public class FFSync {
         }
 
         //Authentication Block
-        FTrapid ftr = new FTrapid(ds);
+        FTrapid ftr = new FTrapid(ds, externalIP, (short)REQUESTSPORT);
         Scanner sc  = new Scanner(System.in);
         System.out.print("Introduza a sua password, em ambas as maquinas: ");
         String pass = sc.next(); sc.close();
         try {
-           if (ftr.authentication(pass)!=1) {
-               System.out.println("Palavra passe errada");
-               return;
-           }
+            if (ftr.authentication(pass)!=1) {
+                System.out.println("Palavra passe errada");
+                return;
+            }
         } catch (Exception e) { //isto vai apanhar tanto a IOException como a exceção por limite
             e.printStackTrace();
             System.out.println("Erro na autenticação: " + e.getMessage());
@@ -63,11 +64,12 @@ public class FFSync {
         System.out.println("Sucesso na autenticação!!");
 
         //Fills the map with the files present in the given directory
-        filesInDir = getFilesToBeSent(ftr, ds.getLocalAddress().getHostAddress(), externalIP, folderPath);
+        String localIP = FFSync.getLocalIP(externalIP); System.out.println(localIP);
+        filesInDir = getFilesToBeSent(ftr, localIP, externalIP, folderPath);
         if(filesInDir == null) return;
 
         //Starts a connection worker. This worker is responsible for answering requests
-        ConnectionWorker cw = new ConnectionWorker(receivers, externalIP, folderPath, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
+        ConnectionWorker cw = new ConnectionWorker(receivers, externalIP, (short) REQUESTSPORT, folderPath, ds, ftr, receiveLock, sendLock, requestsSent, requestsReceived);
         cw.start();
 
         //Starts threads for each file that needs to be sent, taking into account the number of threads established
@@ -76,6 +78,8 @@ public class FFSync {
         //Waits for connection worker to finish
         try { cw.join(); }
         catch (InterruptedException ignored) {}
+
+        ds.close();
     }
 
     /* ******** Main Methods ******** */
@@ -100,10 +104,13 @@ public class FFSync {
 
         //Decides the order in which it will receive the map of files from the other client
         try {
+            System.out.println("Localip: " + localIP + " | externalIP: " + externalIP);
             if (localIP.compareTo(externalIP) < 0) {
+                System.out.println("1");
                 ftr.sendData(serialize(filesInDir));
                 filesInDirReceived = deserialize(ftr.receiveData());
             } else {
+                System.out.println("2");
                 filesInDirReceived = deserialize(ftr.receiveData());
                 ftr.sendData(serialize(filesInDir));
             }
@@ -153,8 +160,8 @@ public class FFSync {
             }
 
             //Creates a Transfer Worker. This worker is responsible for sending the file to the other client, after performing a request to the other client, and receiving confirmation(SYN).
-            TransferWorker tw = new TransferWorker(senders, true, false, folderPath, filename, datagramSocket, externalIP, sendLock);
-            tw.connectToPort(externalIP, REQUESTSPORT);
+            TransferWorker tw = new TransferWorker(senders, true, false, folderPath, filename, datagramSocket, externalIP, (short) REQUESTSPORT, sendLock);
+            //tw.connectToPort(externalIP, REQUESTSPORT);
             tw.start();
             requestsSent.put(filename, tw);
 
@@ -218,6 +225,7 @@ public class FFSync {
         ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
         ObjectOutputStream out = new ObjectOutputStream(byteOut);
 
+        System.out.println("Size: " + filesInDir.size());
         out.writeInt(filesInDir.size());
 
         for(Map.Entry<String,Long> entry : filesInDir.entrySet()){
@@ -235,16 +243,26 @@ public class FFSync {
 
     private static Map<String,Long> deserialize(byte[] bytes) throws IOException {
         Map<String, Long> map = new HashMap<>();
+        ByteBuffer bb = ByteBuffer.allocate(bytes.length);
         ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
         ObjectInputStream in = new ObjectInputStream(byteIn);
 
-        int nFiles = in.readInt();
+        int nFiles = in.readInt(); /*nFiles = bb.getInt();*/ System.out.println("nFiles: " + nFiles);
 
         for (;nFiles > 0;nFiles--)
             map.put(in.readUTF(),in.readLong());
 
-        byteIn.close();
         in.close();
+        byteIn.close();
         return map;
+    }
+
+    private static String getLocalIP(String externalIP){
+        DatagramSocket datagramSocket = createDatagramSocket();
+        try { datagramSocket.connect(InetAddress.getByName(externalIP), 9999); }
+        catch (UnknownHostException ignored) {}
+        String localIP = datagramSocket.getLocalAddress().getHostAddress();
+        datagramSocket.close();
+        return localIP;
     }
 }

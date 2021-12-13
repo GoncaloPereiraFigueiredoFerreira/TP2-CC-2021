@@ -20,7 +20,7 @@ public class TransferWorker extends Thread{
     private final int MAXDATAPERCONNECTION = FTrapid.MAXDATA * FTrapid.MAXDATAPACKETSNUMBER; //limit of bytes sent by FTrapid in one connection
 
 
-    public TransferWorker(ThreadGroup tg, boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds, String externalIP, ReentrantLock sendLock){
+    public TransferWorker(ThreadGroup tg, boolean requester, boolean receiver, String folderPath, String filename, DatagramSocket ds, String externalIP, short externalPort, ReentrantLock sendLock){
         super(tg,filename);
         this.state      = TWState.NEW;
         this.requester  = requester;
@@ -28,7 +28,7 @@ public class TransferWorker extends Thread{
         this.folderPath = folderPath;
         this.filename   = filename;
         this.ds         = ds;
-        this.ftr        = new FTrapid(ds);
+        this.ftr        = new FTrapid(ds,externalIP,externalPort);
         this.sendLock   = sendLock;
         this.externalIP = externalIP;
     }
@@ -46,13 +46,11 @@ public class TransferWorker extends Thread{
             }
             else {
                 runSendFile();
-                System.out.println(filename + " sent!");
             }
         }
         else {
             if(receiver) {
                 runReceiveFile();
-                System.out.println("Received " + filename + "!");
             }
             else {
                 //(CHECK) receive ack?
@@ -91,26 +89,35 @@ public class TransferWorker extends Thread{
 
 
         //Sends request and waits for a SYN
+        boolean keepSendingRequest = true;
         int nrTimeouts = 10;
 
         try {
             ds.setSoTimeout(250);
 
-            while (nrTimeouts > 0) {
+            while (keepSendingRequest) {
                 try {
                     sendLock.lock();
-                    ftr.requestRRWR(filename, (short) ds.getPort(), (short) 2, 0);
+                    ftr.requestRRWR(filename, (short) ds.getLocalPort(), (short) 2, 0);
                 }
                 catch (OpcodeNotRecognizedException | IOException ignored) {}
                 finally { sendLock.unlock(); }
 
-                try { if(receivedSyn()) nrTimeouts = 0; }
-                catch (SocketTimeoutException ste) { nrTimeouts--; }
+                try { if(receivedSyn()) keepSendingRequest = false; }
+                catch (SocketTimeoutException ste) {
+                    if(nrTimeouts == 0) keepSendingRequest = false;
+                    else nrTimeouts--;
+                }
             }
-
         } catch (IOException ioe) {
             System.out.println("Connection error: " + filename);
         }
+
+        if(nrTimeouts == 0) {
+            System.out.println("Limit of timeouts reached!");
+            return;
+        }
+
 
         //Number of calls of the function 'sendData' from the class FTrapid
         fileLength = file.length();
@@ -160,6 +167,8 @@ public class TransferWorker extends Thread{
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+        System.out.println(filename + " sent!");
     }
 
     /*
@@ -195,7 +204,7 @@ public class TransferWorker extends Thread{
         //Sends First SYN
         try {
             sendLock.lock();
-            ftr.answer((short) 2, (short) ds.getLocalPort() , filename);
+            ftr.answer((short) 2, (short) ds.getLocalPort() , filename); System.out.println("Sent SYn: port " + ds.getLocalPort() + " | filename: " + filename);
         } catch (OpcodeNotRecognizedException | IOException ignored) {
         } finally { sendLock.unlock(); }
 
@@ -236,6 +245,8 @@ public class TransferWorker extends Thread{
         catch (IOException ignored) {}
 
         closeSocket();
+
+        System.out.println("Received " + filename + "!");
     }
 
     /* ********** Auxiliar Methods ********** */
@@ -251,7 +262,7 @@ public class TransferWorker extends Thread{
             try {
                 espi = ftr.analyseAnswer(dp);
                 if(filename.equals(espi.getFilename())) {
-                    this.connectToPort(externalIP, dp.getPort());
+                    this.changePort(externalIP, espi.getMsg());
                     return true;
                 }
                 else return false;
@@ -304,6 +315,11 @@ public class TransferWorker extends Thread{
             //TODO: Adicionar erro
             return false;
         }
+    }
+
+    public void changePort(String ip, short port){
+        this.ftr.setExternalIP(ip);
+        this.ftr.setExternalPort(port);
     }
 
     public void closeSocket(){

@@ -5,6 +5,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class ConnectionWorker extends Thread {
     private final String externalIP; //IP of the other client
+    private final short requestsPort;
     private final String folderPath;
     private final DatagramSocket ds;
     private final FTrapid ftr;
@@ -14,9 +15,10 @@ public class ConnectionWorker extends Thread {
     private final Map<String, TransferWorker> requestsReceived; //Keeps track of the files received and the files that are being received
     private final ThreadGroup receivers;
 
-    public ConnectionWorker(ThreadGroup receivers, String externalIP, String folderPath, DatagramSocket ds, FTrapid ftr, ReentrantLock receiveLock, ReentrantLock sendLock, Map<String, TransferWorker> requestsSent, Map<String, TransferWorker> requestsReceived) {
+    public ConnectionWorker(ThreadGroup receivers, String externalIP, short requestsPort, String folderPath, DatagramSocket ds, FTrapid ftr, ReentrantLock receiveLock, ReentrantLock sendLock, Map<String, TransferWorker> requestsSent, Map<String, TransferWorker> requestsReceived) {
         this.receivers = receivers;
         this.externalIP = externalIP;
+        this.requestsPort = requestsPort;
         this.folderPath = folderPath;
         this.ds = ds;
         this.ftr = ftr;
@@ -81,11 +83,11 @@ public class ConnectionWorker extends Thread {
             //Ignores duplicates. Expects resends from the receiver (TransferWorker) created.
             if (!requestsReceived.containsKey(filename)) {
                 dsTransferWorker = FFSync.createDatagramSocket();
-                TransferWorker tw = new TransferWorker(receivers, false, true, folderPath, filename, dsTransferWorker, externalIP, sendLock);
-                tw.connectToPort(externalIP, rpi.getPort());
+                TransferWorker tw = new TransferWorker(receivers, false, true, folderPath, filename, dsTransferWorker, externalIP, rpi.getPort(), sendLock);
+                //tw.connectToPort(externalIP, rpi.getPort());
 
                 //TODO: Adicionar sleep caso não hajam threads para responder às necessidades dos requests. N deve ser preciso, o outro cliente tem lock para o numero de threads a enviar e o receive é bloqueante
-                while (receivers.activeCount() >= FFSync.MAXTHREADSNUMBERPERFUNCTION)
+               while (receivers.activeCount() > FFSync.MAXTHREADSNUMBERPERFUNCTION)
                     try {
                         sleep(500);
                     } catch (InterruptedException ignored) {
