@@ -422,7 +422,7 @@ public class FTrapid {
 
     public void sendData(byte[] msg) throws IOException {
         dS.setSoTimeout(1000);
-        int maxTries=5;  //TODO implementar
+        int maxTries=5;
 
         // 1º Passo : Converter o que é lido do ficheiro para pacotes de Data
         byte [][] packetsData = createDATAPackage(msg);
@@ -452,14 +452,14 @@ public class FTrapid {
         DatagramPacket[] dpsR;
 
         boolean flag = true;
-
+        int tries =0;
         //Começar ciclo
         while(flag){
             //TODO: Lidar com maximo de timeouts
 
 
             // 1º Enviar todos os DatagramPackets correspondentes ao frame
-            for (int i =0; i < windowSize && frame[i]!=-1 ; i++) {
+            for (int i =0; i < packetsData.length&& i<windowSize && frame[i]!=-1 ; i++) {
                 if ( !acks[frame[i]])              // if ack not received for packet
                     dS.send(dpsS[frame[i]]);
             }
@@ -492,7 +492,8 @@ public class FTrapid {
                     }
                 }
             }
-            // 4º Ajustar Window
+            // 4º Ajustar Window // Implementar max tries
+            int before = indexAcked;
 
             //Codigo para dar shift ao array
             while(indexAcked<packetsData.length && acks[indexAcked]){
@@ -505,7 +506,10 @@ public class FTrapid {
 
                 indexAcked++;
             }
+            if (before == indexAcked) tries++;
+            else tries=0;
 
+            if (tries == maxTries) throw new IOException("Maximo de Tentativas");
             if (indexAcked == packetsData.length) flag=false;
         }
 
@@ -519,6 +523,8 @@ public class FTrapid {
         short lastblock=0;
         boolean flag = true;
         boolean lastflag = false;
+        int tries=0;
+        int maxTries=5;
 
         //1º Definição do Window Size = 4 para ja, de forma a testar
         int windowSize = 4;
@@ -543,19 +549,21 @@ public class FTrapid {
         //Começar ciclo
         while(flag){
 
+
             //1º Dar receive aos dados
             dpsR = new DatagramPacket[windowSize*2]; //TODO: Duplicados
             counter=0;
 
             for (;counter<windowSize*2;counter++){
                 try {
-                    if (counter == 1) dS.setSoTimeout(50);
+                    if (counter == 1) dS.setSoTimeout(150);
                     dpsR[counter] = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
-                    dS.receive(dpsR[windowSize]);
+
+                    dS.receive(dpsR[counter]);
+
                 }catch (SocketTimeoutException e){
                     break;
                 }
-
             }
             dS.setSoTimeout(1000);
 
@@ -587,7 +595,8 @@ public class FTrapid {
             }
 
             // 3º organizar frames
-            for (int i=0; received[i];){
+            int moved=0;
+            for (int i=0; received[i];moved++){
                 for (int i2 =0; i2<windowSize-1;i2++) {frame[i2] = frame[i2+1]; received[i2]=received[i2+1];}
                 received[windowSize-1] = false;
                 if (!lastflag) {
@@ -596,6 +605,11 @@ public class FTrapid {
                 }
                 else frame[windowSize-1]=-1;
             }
+            // Reconhecer que n avançou
+            if (moved == 0) tries++; else tries=0;
+            if (tries==maxTries) throw new IOException("Timeouts Excedidos");
+
+
             //confirmar que todos foram enviados
             int confirmEnd=0;
             for(;lastflag && confirmEnd< windowSize &&frame[confirmEnd]==-1;confirmEnd++);
