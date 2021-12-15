@@ -2,8 +2,7 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 
 /*
@@ -422,20 +421,19 @@ public class FTrapidV2 {
     //////////Methods for workers/////
 
     public void sendDataV2(byte[] msg) throws IOException {
-        dS.setSoTimeout(2000);
-        int maxTries=5;
+        dS.setSoTimeout(1000);
+        int maxTries=5;  //TODO implementar
 
         // 1º Passo : Converter o que é lido do ficheiro para pacotes de Data
-        byte [][] packetsData = createDATAPackage(msg); //TODO:Need to change the sequence Number Here
-        DatagramPacket[] dpsS = new DatagramPacket[packetsData.length];
-        for (int i=0; i<packetsData.length;i++)
-            dpsS[i] = new DatagramPacket(packetsData[i],packetsData[i].length);
+        byte [][] packetsData = createDATAPackage(msg);
+        DatagramPacket[] dpsS = new DatagramPacket[packetsData.length]; //TODO: N preciso de manter estes dois arrays
+        for (int i=0; i< packetsData.length;i++)
+            dpsS[i] = new DatagramPacket(packetsData[i],packetsData[i].length,InetAddress.getByName(externalIP), externalPort);
 
 
         //2º Definição do Window Size = 4 para ja, de forma a testar
         int windowSize = 4;
-        int sequenceN = windowSize * 2 + 1 ;
-        int nframe = 0;
+        int nextPacket = windowSize;
 
         //Preciso de uma maneira de saber quais os pacotes que enviei
         int[] frame = new int[windowSize];
@@ -443,175 +441,200 @@ public class FTrapidV2 {
         // Codigo para gerar Window
         for (int i =0; i<windowSize;i++) frame[i]=i;
 
-        //Codigo para dar shift ao array
-        for (int i =0; i<windowSize-1;i++) frame[i] = frame[i+1];
-
-        int temp =frame[windowSize-2] +1;
-        if (temp > sequenceN-1){
-            nframe++;
-            frame[windowSize-1]=0;
-        }
-        else frame[windowSize-1]= temp;
 
         // Array de Controlo de Acks
         //Gerar
-        int[] acks = new int[windowSize];
-        for (int i =0; i<windowSize;i++) acks[i] = 0;
+        boolean[] acks = new boolean[packetsData.length];
+        Arrays.fill(acks,false);
+        int indexAcked=0;
 
         // Pacotes recebidos
-        DatagramPacket[] dpsR = new DatagramPacket[windowSize];
+        DatagramPacket[] dpsR;
 
+        boolean flag = true;
 
         //Começar ciclo
-        while(true){
+        while(flag){
+            //TODO: Lidar com maximo de timeouts
+
+
             // 1º Enviar todos os DatagramPackets correspondentes ao frame
-            for (int i =0; i < windowSize; i++) {
-                if (acks[i] == 0)
+            for (int i =0; i < windowSize && frame[i]!=-1 ; i++) {
+                if ( !acks[frame[i]])              // if ack not received for packet
                     dS.send(dpsS[frame[i]]);
             }
 
-            // 2º Esperar pelo envio de acks
-            //maybe a sleep
+            dpsR = new DatagramPacket[windowSize*2]; //TODO: Duplicados
+
+            // 2º Esperar por acks
             int counter =0;
-            for (; counter < windowSize; counter++) {
+            for (; counter < windowSize*2; counter++) { //TODO: Duplicados
                 try {
+                    if (counter==1 ) dS.setSoTimeout(50);
+                    dpsR[counter] = new DatagramPacket(new byte[MAXACKSIZE], MAXACKSIZE);
                     dS.receive(dpsR[counter]);
                 }catch (SocketTimeoutException e){
                     break;
                 }
             }
+            dS.setSoTimeout(1000);
 
-            //Analisar os acks recebidos
+            // 3º Analisar os acks recebidos
             for (int i=0; i<counter;i++){
                 if (getOpcode(dpsR[i].getData())==ACKopcode){
                     short packet;
                     try {
-
                         packet = readACKPacket(dpsR[i].getData());
-                        // marcar o packet como recebido
-                        // verificar se duplicado, ou se ja enviado
-                        // verificar se ja foi enviado
+                        acks[packet]=true;
 
                     }catch (IntegrityException e) {
                         e.printStackTrace(); //TODO: Deal with this
                     }
                 }
             }
-
-            //mudar windows
-
-
-
-
-
-
-
-
-        }
-
-
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    public void sendData(byte[] msg) throws IOException {
-        //1º convert msg to packets
-        byte [][] packetsData = createDATAPackage(msg);
-        int maxTries=5;
-        dS.setSoTimeout(2000);
-
-        //2º start loop of transfer
-        boolean flag = true;
-        for (short i =0; flag;){
-
-            if (packetsData[i].length < MAXDATASIZE || i == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false;}
-
-            DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length, InetAddress.getByName(externalIP), externalPort);
-            dS.send(dPout);
-
-            // 3º Esperar por ACK
-            DatagramPacket dPin = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
-
-
-            try{
-                dS.receive(dPin);
-                maxTries=5;
-
-
-                dS.setSoTimeout(50);
-                DatagramPacket dPin2 = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
-                boolean flag2=false;
-                try{
-                    while(!flag2) {
-                        dS.receive(dPin2);flag2=true;
-                    }
-                }catch (SocketTimeoutException e){}
-                dS.setSoTimeout(2000);
-
-                if (flag2) dPin = dPin2;
-
-
-                // 4º Traduzir Ack
-                if (this.getOpcode(dPin.getData())==ACKopcode) {
-                    short packet;
-
-                    try {
-                        packet = readACKPacket(dPin.getData());
-                        if (i==packet) { i++;}
-                    } catch (IntegrityException e) {
-                        e.printStackTrace();
-                    }
+            // 4º Ajustar Window
+
+            //Codigo para dar shift ao array
+            while(indexAcked<packetsData.length && acks[indexAcked]){
+                for (int i =0; i<windowSize-1;i++) frame[i] = frame[i+1];
+                if (nextPacket < packetsData.length){
+                    frame[windowSize-1]= nextPacket;
+                    nextPacket++;
                 }
-            }catch (SocketTimeoutException e){
-                maxTries--;
-                if (maxTries == 0) throw new IOException("Timeouts Excedidos");
+                else frame[windowSize-1]= -1;
+
+                indexAcked++;
             }
+
+            if (indexAcked == packetsData.length) flag=false;
         }
 
+
     }
+
+
+    public byte[] receiveDataV2() throws IOException {
+        dS.setSoTimeout(1000);
+
+        short lastblock=0;
+        boolean flag = true;
+        boolean lastflag = false;
+
+        //1º Definição do Window Size = 4 para ja, de forma a testar
+        int windowSize = 4;
+        int nextPacket = windowSize;
+
+        //Preciso de uma maneira de saber quais os pacotes que estou a espera de receber
+
+        int[] frame = new int[windowSize];
+
+        // Codigo para gerar Window
+        for (int i =0; i<windowSize;i++) frame[i]=i;
+
+        boolean[] received = new boolean[windowSize];
+        Arrays.fill(received,false);
+
+
+        int counter =0;
+        DatagramPacket[] dpsR;
+
+        TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
+
+        //Começar ciclo
+        while(flag){
+
+            //1º Dar receive aos dados
+            dpsR = new DatagramPacket[windowSize*2]; //TODO: Duplicados
+            counter=0;
+
+            for (;counter<windowSize*2;counter++){
+                try {
+                    if (counter == 1) dS.setSoTimeout(50);
+                    dpsR[counter] = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
+                    dS.receive(dpsR[windowSize]);
+                }catch (SocketTimeoutException e){
+                    break;
+                }
+
+            }
+            dS.setSoTimeout(1000);
+
+            //2º Analisar packets recebidos e enviar acks
+
+            for (int i=0; i<counter; i++){
+                if (getOpcode(dpsR[i].getData())==DATAopcode){
+                    try {
+                        DataPackageInfo di =readDataPacket(dpsR[i].getData());
+                        //verificar se o bloco recebido esta no frame
+                        int ind =0;
+                        for(; ind<windowSize && di.getNrBloco() != frame[ind]; ind++);
+                        if (ind < windowSize){
+                            if (!received[ind]) info.add(di);
+                            received[ind]=true;
+                            DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, InetAddress.getByName(externalIP), externalPort);
+                            dS.send(dPout);
+                            if (di.getData().length < MAXDATA) {
+                                lastflag=true;
+                                lastblock = (short) di.getData().length;
+                                for(int i2=ind+1; i2<windowSize; i2++) frame[i2] = -1;
+                            }
+                        }
+                    } catch (IntegrityException e) {
+                       continue;
+                    }
+
+                }
+            }
+
+            // 3º organizar frames
+            for (int i=0; received[i];){
+                for (int i2 =0; i2<windowSize-1;i2++) {frame[i2] = frame[i2+1]; received[i2]=received[i2+1];}
+                received[windowSize-1] = false;
+                if (!lastflag) {
+                    frame[windowSize-1]= nextPacket;
+                    nextPacket++;
+                }
+                else frame[windowSize-1]=-1;
+            }
+            //confirmar que todos foram enviados
+            int confirmEnd=0;
+            for(;lastflag && confirmEnd< windowSize &&frame[confirmEnd]==-1;confirmEnd++);
+            if (lastflag && confirmEnd== windowSize) flag = false;
+        }
+
+        ByteBuffer bf = ByteBuffer.allocate((info.size()-1)*MAXDATA + lastblock);
+        for (DataPackageInfo dataPackageInfo : info) {
+            bf.put(dataPackageInfo.getData());
+        }
+        return bf.array();
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     public byte[] receiveData() throws SocketTimeoutException, Exception {
@@ -678,6 +701,63 @@ public class FTrapidV2 {
         return msg;
     }
 
+
+
+    public void sendData(byte[] msg) throws IOException {
+        //1º convert msg to packets
+        byte [][] packetsData = createDATAPackage(msg);
+        int maxTries=5;
+        dS.setSoTimeout(2000);
+
+        //2º start loop of transfer
+        boolean flag = true;
+        for (short i =0; flag;){
+
+            if (packetsData[i].length < MAXDATASIZE || i == (short) (MAXDATAPACKETSNUMBER - 1)) {flag = false;}
+
+            DatagramPacket dPout = new DatagramPacket(packetsData[i],packetsData[i].length, InetAddress.getByName(externalIP), externalPort);
+            dS.send(dPout);
+
+            // 3º Esperar por ACK
+            DatagramPacket dPin = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
+
+
+            try{
+                dS.receive(dPin);
+                maxTries=5;
+
+
+                dS.setSoTimeout(50);
+                DatagramPacket dPin2 = new DatagramPacket(new byte[MAXACKSIZE],MAXACKSIZE);
+                boolean flag2=false;
+                try{
+                    while(!flag2) {
+                        dS.receive(dPin2);flag2=true;
+                    }
+                }catch (SocketTimeoutException e){}
+                dS.setSoTimeout(2000);
+
+                if (flag2) dPin = dPin2;
+
+
+                // 4º Traduzir Ack
+                if (this.getOpcode(dPin.getData())==ACKopcode) {
+                    short packet;
+
+                    try {
+                        packet = readACKPacket(dPin.getData());
+                        if (i==packet) { i++;}
+                    } catch (IntegrityException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }catch (SocketTimeoutException e){
+                maxTries--;
+                if (maxTries == 0) throw new IOException("Timeouts Excedidos");
+            }
+        }
+
+    }
 
 
     ////////Methods for main Port////////////
