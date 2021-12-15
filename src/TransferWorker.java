@@ -1,6 +1,8 @@
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -12,7 +14,7 @@ public class TransferWorker extends Thread{
     private final boolean receiver;      //true if is reading(receiving) a file
     private final String folderPath; //path to the shared folder
     private final String filename;   //path to the file wished to be read/written within the shared folder
-    private final DatagramSocket ds; //socket used to connect with the other client
+    private final DatagramSocket ds;
     private final FTrapid ftr;
     private final ReentrantLock sendLock;
     private final String externalIP;
@@ -28,7 +30,7 @@ public class TransferWorker extends Thread{
         this.folderPath = folderPath;
         this.filename   = filename;
         this.ds         = ds;
-        this.ftr        = new FTrapid(ds,externalIP,externalPort);
+        this.ftr        = new FTrapid(ds, externalIP, externalPort);
         this.sendLock   = sendLock;
         this.externalIP = externalIP;
     }
@@ -36,8 +38,6 @@ public class TransferWorker extends Thread{
     /* ******** Main Methods ******** */
 
     public void run() {
-        state = TWState.RUNNING;
-
         //Verifies the value of mode, to select the behaviour of the thread
         if(requester) {
             if(receiver) {
@@ -58,7 +58,7 @@ public class TransferWorker extends Thread{
             }
         }
 
-        state = TWState.TERMINATED;
+        if(state == TWState.RUNNING) state = TWState.TERMINATED;
         closeSocket();
     }
 
@@ -68,7 +68,7 @@ public class TransferWorker extends Thread{
     * DatagramSocket should be connected initially to the port responsible for receiving the requests
      */
     private void runSendFile() {
-        byte[] buffer = null;
+        byte[] buffer;
 
         //Writes the file to a buffer and send it
         File file;
@@ -76,14 +76,12 @@ public class TransferWorker extends Thread{
         long fileLength;
 
         try {
-            String filepath = filePathgenerator(filename,false);
+            String filepath = FilesHandler.filePathgenerator(folderPath, filename,false);
             file = new File(filepath);
             fips = new FileInputStream(file);
         } catch (FileNotFoundException fnfe) {
             state = TWState.ERROROCURRED;
-            System.out.println("Could not find the file: " + filename);
-            //TODO: Mandar erro a cancelar transferencia
-            closeSocket();
+            FFSync.writeToLogFile("SEND FILE (ERROR): Could not find file(" + filename +")!");
             return;
         }
 
@@ -110,13 +108,20 @@ public class TransferWorker extends Thread{
                 }
             }
         } catch (IOException ioe) {
-            System.out.println("Connection error: " + filename);
+            FFSync.writeToLogFile("SEND FILE (ERROR): Connection failed (" + filename + ")!");
         }
 
         if(nrTimeouts == 0) {
-            System.out.println("Limit of timeouts reached!");
+            state = TWState.TIMEDOUT;
+            FFSync.writeToLogFile("SEND FILE (TIMEOUT): Limit of request's timeouts reached (" + filename + ")!");
             return;
         }
+
+
+        //Start of transfer
+        FFSync.writeToLogFile("SEND FILE: Start of " + filename + " transference!");
+        state = TWState.RUNNING;
+        long transferStartTime = System.currentTimeMillis();
 
 
         //Number of calls of the function 'sendData' from the class FTrapid
@@ -124,51 +129,34 @@ public class TransferWorker extends Thread{
         int nrCalls = (int) (fileLength / MAXDATAPERCONNECTION);
         nrCalls++; //Same explanation as the on in the method 'createDATAPackage' from the class FTrapid
 
-        if (nrCalls > 1) buffer = new byte[MAXDATAPERCONNECTION];
+        buffer = new byte[MAXDATAPERCONNECTION];
 
-        for (; nrCalls > 1; nrCalls--) {
+        for (; nrCalls > 0; nrCalls--) {
+
+            if(nrCalls == 1) buffer = new byte[(int) (fileLength % MAXDATAPERCONNECTION)];
+
             try {
                 fips.read(buffer);
+                ftr.sendData(buffer);
+
+                //TODO: Pedir para retornar codigo de sucesso
+                //if(ftr.sendData(buffer) == 1) {
+                //    state = TWState.TIMEDOUT;
+                //    FFSync.writeToLogFile("SEND FILE (TIMEOUT): Limit of timeouts reached (" + filename + ")!");
+                //    try { fips.close(); } catch (IOException ignored) {}
+                //    return;
+                //}
             } catch (IOException e) {
                 state = TWState.ERROROCURRED;
-                System.out.println("Error reading file: " + filename + ".");
-                //TODO: Enviar erro para cancelar a transferencia
-                closeSocket();
-            }
-            try {
-                ftr.sendData(buffer);
-            } catch (IOException e) {
-                e.printStackTrace();
+                FFSync.writeToLogFile("SEND FILE (ERROR): Error reading/sending file (" + filename + ")!");
+                return;
             }
         }
 
-        //Last call
-        int lastCallLength = (int) (fileLength % MAXDATAPERCONNECTION);
-        buffer = new byte[lastCallLength];
-        try {
-            fips.read(buffer);
-        } catch (IOException e) {
-            state = TWState.ERROROCURRED;
-            System.out.println("Error reading file : " + filename);
-            //TODO: Enviar erro para cancelar a transferencia
-            closeSocket();
-        }
 
-        try {
-            ftr.sendData(buffer);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        closeSocket();
-        //TODO: what do we do here?
-        try {
-            fips.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        System.out.println(filename + " sent!");
+        float transferTime = (float) ((System.currentTimeMillis() - transferStartTime) / 1000);
+        FFSync.writeToLogFile("SEND FILE: " + filename + " sent! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + fileLength / FTrapid.MAXDATA * 8 + "bits/sec");
+        try { fips.close(); } catch (IOException ignored) {}
     }
 
     /*
@@ -177,41 +165,58 @@ public class TransferWorker extends Thread{
     * DatagramSocket (this.ds) should be connected to the other client's thread that is responsible for sending the file. FTrapid (this.ftr) should be created with the DatagramSocket refered before.
      */
     private void runReceiveFile() {
+        state = TWState.RUNNING;
+        String filepath;
         byte[] buffer;
         boolean keepWriting = true;
 
         //Creates needed directories to write file
         FileOutputStream fops;
         try {
-            String filepath = filePathgenerator(filename, true);
+            filepath = FilesHandler.filePathgenerator(folderPath, filename, true);
             fops            = new FileOutputStream(filepath);
         } catch (FileNotFoundException e) {
             state = TWState.ERROROCURRED;
-            System.out.println("Error creating/opening file: " + filename);
-            //TODO: Enviar erro para cancelar a transferencia
-            closeSocket();
+            FFSync.writeToLogFile("RECEIVE FILE (ERROR): Error creating/opening file (" + filename + ")!");
             return;
         }
 
+
         //Defines timeouts
-        int nrTimeouts = 5;
+        int nrTimeouts = 10;
         try{ ds.setSoTimeout(250); }
         catch (SocketException se){
-            System.out.println("Connection error! (file: " + filename);
-            keepWriting = false;
+            state = TWState.ERROROCURRED;
+            FFSync.writeToLogFile("RECEIVE FILE (ERROR): Error creating/accessing socket (" + filename + ")!");
+            return;
         }
+
 
         //Sends First SYN
         try {
             sendLock.lock();
-            ftr.answer((short) 2, (short) ds.getLocalPort() , filename); System.out.println("Sent SYn: port " + ds.getLocalPort() + " | filename: " + filename);
+            ftr.answer((short) 2, (short) ds.getLocalPort(), filename);
         } catch (OpcodeNotRecognizedException | IOException ignored) {
         } finally { sendLock.unlock(); }
+
+        //Start of transfer
+        FFSync.writeToLogFile("RECEIVE FILE: Start of " + filename + " transference!");
+        long transferStartTime = System.currentTimeMillis();
 
         //Receives files packages
         while (keepWriting) {
             try {
                 buffer = ftr.receiveData();
+
+                //TODO: Pedir para que um null seja codigo de insucesso para timeout
+                if(buffer == null) {
+                    state = TWState.TIMEDOUT;
+                    FFSync.writeToLogFile("RECEIVE FILE (TIMEOUT/ERROR): Limit of timeouts reached / Error occured while receiving file (" + filename + ")!");
+                    try { fops.close(); } catch (IOException ignored) {}
+                    FilesHandler.deleteFile(filepath);
+                    return;
+                }
+
                 fops.write(buffer);
                 fops.flush();
 
@@ -220,8 +225,11 @@ public class TransferWorker extends Thread{
 
             } catch (SocketTimeoutException ste){
                 if(nrTimeouts == 0) {
-                    keepWriting = false;
-                    System.out.println("Connection error! (file: " + filename);
+                    state = TWState.TIMEDOUT;
+                    FFSync.writeToLogFile("RECEIVE FILE (TIMEOUT): Limit of timeouts reached (" + filename + ")!");
+                    try { fops.close(); } catch (IOException ignored) {}
+                    FilesHandler.deleteFile(filepath);
+                    return;
                 }
                 else {
                     nrTimeouts--;
@@ -233,20 +241,18 @@ public class TransferWorker extends Thread{
                 }
             } catch (Exception e) {
                 state = TWState.ERROROCURRED;
-                System.out.println("Error writing file: " + filename);
-                if (new File(filename).delete()) System.out.println("Corrupted file (" + filename + ") deleted!");
-                //TODO: Enviar erro para cancelar a transferencia
-                closeSocket();
+                FFSync.writeToLogFile("RECEIVE FILE (ERROR): Could not write to file (" + filename + ")!");
+                try { fops.close(); } catch (IOException ignored) {}
+                FilesHandler.deleteFile(filepath);
                 return;
             }
         }
 
+        float transferTime = (float) ((System.currentTimeMillis() - transferStartTime) / 1000);
+        FFSync.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + (new File(filepath).length()) / FTrapid.MAXDATA * 8 + "bits/sec");
+
         try { fops.close(); }
         catch (IOException ignored) {}
-
-        closeSocket();
-
-        System.out.println("Received " + filename + "!");
     }
 
     /* ********** Auxiliar Methods ********** */
@@ -275,24 +281,6 @@ public class TransferWorker extends Thread{
         return false;
     }
 
-    private String filePathgenerator (String filename,boolean receiver){
-        String separator;
-        if(!System.getProperty("file.separator").equals("/") ) separator="\\";
-        else separator = "/";
-        String[] ar = FFSync.pathToArray(filename);
-        StringBuilder sb = new StringBuilder();
-        sb.append(folderPath);
-        for (int i = 0; i < ar.length ;i++) {
-            if (receiver && i !=0 && i == ar.length - 1) {
-                File f2 = new File(sb.toString());
-                f2.mkdirs();
-            }
-            sb.append(separator).append(ar[i]);
-        }
-
-        return sb.toString();
-    }
-
     public String getFileName(){
         return this.filename;
     }
@@ -304,17 +292,6 @@ public class TransferWorker extends Thread{
     public short getLocalPort(){
         if(ds == null) return -1;
         return (short) ds.getLocalPort();
-    }
-
-    public boolean connectToPort(String ip, int port){
-        try {
-            this.ds.connect(InetAddress.getByName(ip),port);
-            return true;
-        }
-        catch (UnknownHostException e) {
-            //TODO: Adicionar erro
-            return false;
-        }
     }
 
     public void changePort(String ip, short port){

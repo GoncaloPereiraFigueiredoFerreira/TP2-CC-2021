@@ -5,37 +5,31 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class ConnectionWorker extends Thread {
     private final String externalIP; //IP of the other client
-    private final short requestsPort;
     private final String folderPath;
     private final DatagramSocket ds;
     private final FTrapid ftr;
     private final ReentrantLock receiveLock;
     private final ReentrantLock sendLock;
-    private final Map<String, TransferWorker> requestsSent;
     private final Map<String, TransferWorker> requestsReceived; //Keeps track of the files received and the files that are being received
     private final ThreadGroup receivers;
 
-    public ConnectionWorker(ThreadGroup receivers, String externalIP, short requestsPort, String folderPath, DatagramSocket ds, FTrapid ftr, ReentrantLock receiveLock, ReentrantLock sendLock, Map<String, TransferWorker> requestsSent, Map<String, TransferWorker> requestsReceived) {
+    public ConnectionWorker(ThreadGroup receivers, String externalIP, String folderPath, DatagramSocket ds, FTrapid ftr, ReentrantLock receiveLock, ReentrantLock sendLock, Map<String, TransferWorker> requestsReceived) {
         this.receivers = receivers;
         this.externalIP = externalIP;
-        this.requestsPort = requestsPort;
         this.folderPath = folderPath;
         this.ds = ds;
         this.ftr = ftr;
         this.receiveLock = receiveLock;
         this.sendLock = sendLock;
-        this.requestsSent = requestsSent;
         this.requestsReceived = requestsReceived;
     }
 
-    //TODO: add locks to the data structures
-    //TODO: Make a thread that resends the write requests not confirmed
-    //TODO: Block the threads from receiving or sending if the limit is reached
 
     @Override
     public void run() {
         receive();
     }
+
 
     public void receive() {
         DatagramPacket dp     = new DatagramPacket(new byte[FTrapid.MAXRDWRSIZE], FTrapid.MAXRDWRSIZE);
@@ -48,7 +42,7 @@ public class ConnectionWorker extends Thread {
                 receiveLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if (receivers.activeCount() < (FFSync.MAXTHREADSNUMBERPERFUNCTION / 2)) receive = false;
+                if (receivers.activeCount() < (FFSync.getMAXTHREADSNUMBERPERFUNCTION() / 2)) receive = false;
             } catch (IOException ioException) {
                 handlePackage = false;
             } finally {
@@ -84,22 +78,19 @@ public class ConnectionWorker extends Thread {
             if (!requestsReceived.containsKey(filename)) {
                 dsTransferWorker = FFSync.createDatagramSocket();
                 TransferWorker tw = new TransferWorker(receivers, false, true, folderPath, filename, dsTransferWorker, externalIP, rpi.getPort(), sendLock);
-                //tw.connectToPort(externalIP, rpi.getPort());
 
                 //TODO: Adicionar sleep caso não hajam threads para responder às necessidades dos requests. N deve ser preciso, o outro cliente tem lock para o numero de threads a enviar e o receive é bloqueante
-               while (receivers.activeCount() > FFSync.MAXTHREADSNUMBERPERFUNCTION)
-                    try {
-                        sleep(500);
-                    } catch (InterruptedException ignored) {
-                    } //Maybe use 'Signal'
+                while (receivers.activeCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
+                   try { sleep(500); }
+                   catch (InterruptedException ignored) {}
+                }
 
                 tw.start();
 
                 //TODO: Provavelmente vai ser necessário adicionar locks para as estruturas de dados
                 requestsReceived.put(filename, tw);
             }
-        } catch (IntegrityException ignored) {
-        } //Doesnt do anything. Expects a resend.
+        } catch (IntegrityException ignored) {} //Expects a resend.
     }
 
     //TODO: Add all the errors and handled them (Maior parte é simplesmente um log a dizer que houve erro provavelmente)
