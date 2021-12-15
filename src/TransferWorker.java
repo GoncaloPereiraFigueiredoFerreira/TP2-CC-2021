@@ -97,6 +97,7 @@ public class TransferWorker extends Thread{
                 try {
                     sendLock.lock();
                     ftr.requestRRWR(filename, (short) ds.getLocalPort(), (short) 2, 0);
+                    FFSync.writeToLogFile("REQUEST: Sent Write Request (" + filename +")!");
                 }
                 catch (OpcodeNotRecognizedException | IOException ignored) {}
                 finally { sendLock.unlock(); }
@@ -155,7 +156,7 @@ public class TransferWorker extends Thread{
 
 
         float transferTime = (float) ((System.currentTimeMillis() - transferStartTime) / 1000);
-        FFSync.writeToLogFile("SEND FILE: " + filename + " sent! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + fileLength / FTrapid.MAXDATA * 8 + "bits/sec");
+        FFSync.writeToLogFile("SEND FILE: " + filename + " sent! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + fileLength / transferTime * 8 + "bits/sec");
         try { fips.close(); } catch (IOException ignored) {}
     }
 
@@ -174,7 +175,7 @@ public class TransferWorker extends Thread{
         FileOutputStream fops;
         try {
             filepath = FilesHandler.filePathgenerator(folderPath, filename, true);
-            fops            = new FileOutputStream(filepath);
+            fops     = new FileOutputStream(filepath);
         } catch (FileNotFoundException e) {
             state = TWState.ERROROCURRED;
             FFSync.writeToLogFile("RECEIVE FILE (ERROR): Error creating/opening file (" + filename + ")!");
@@ -196,6 +197,7 @@ public class TransferWorker extends Thread{
         try {
             sendLock.lock();
             ftr.answer((short) 2, (short) ds.getLocalPort(), filename);
+            FFSync.writeToLogFile("REQUEST (SYN): Accepted Write Request (" + filename +")!");
         } catch (OpcodeNotRecognizedException | IOException ignored) {
         } finally { sendLock.unlock(); }
 
@@ -236,6 +238,7 @@ public class TransferWorker extends Thread{
                     try {
                         sendLock.lock();
                         ftr.answer((short) 2, (short) ds.getLocalPort() , filename);
+                        FFSync.writeToLogFile("REQUEST (SYN): Accepted Write Request (" + filename +")!");
                     } catch (OpcodeNotRecognizedException | IOException ignored) {
                     } finally { sendLock.unlock(); }
                 }
@@ -249,7 +252,7 @@ public class TransferWorker extends Thread{
         }
 
         float transferTime = (float) ((System.currentTimeMillis() - transferStartTime) / 1000);
-        FFSync.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + (new File(filepath).length()) / FTrapid.MAXDATA * 8 + "bits/sec");
+        FFSync.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + (new File(filepath).length()) / transferTime * 8 + "bits/sec");
 
         try { fops.close(); }
         catch (IOException ignored) {}

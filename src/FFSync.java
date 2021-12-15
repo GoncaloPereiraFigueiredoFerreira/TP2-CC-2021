@@ -43,7 +43,7 @@ public class FFSync {
 
 
         //Connection verifications
-        if(testConnection(externalIP))
+        if(testConnection())
             writeToLogFile("CONNECTION TEST: Client found!");
         else {
             writeToLogFile("CONNECTION TEST: Couldn't reach the other client!");
@@ -107,9 +107,10 @@ public class FFSync {
 
     /* ******** Main Methods ******** */
 
-    public static boolean testConnection(String externalIP){
-        try{ return InetAddress.getByName(externalIP).isReachable(30000); }
-        catch (IOException e) {return false;}
+    public static boolean testConnection() {
+        try { InetAddress s = InetAddress.getByName(externalIP); }
+        catch (UnknownHostException e) { return false; }
+        return true;
     }
 
     private static Map<String,Long> getFilesToBeSent(FTrapid ftr, String localIP, String externalIP, String folderPath) {
@@ -224,6 +225,6 @@ public class FFSync {
 
     public static void writeToLogFile(String msg){
         if(pw == null) return;
-        pw.write(msg + "\n");
+        pw.write(msg + "\n"); pw.flush();
     }
 }
