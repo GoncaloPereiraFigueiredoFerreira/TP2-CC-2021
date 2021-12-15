@@ -537,8 +537,8 @@ public class FTrapidV2 {
 
         int counter =0;
         DatagramPacket[] dpsR;
-
-        TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
+        List<DataPackageInfo> info = new ArrayList<>();
+        //TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
 
         //Começar ciclo
         while(flag){
@@ -569,7 +569,7 @@ public class FTrapidV2 {
                         int ind =0;
                         for(; ind<windowSize && di.getNrBloco() != frame[ind]; ind++);
                         if (ind < windowSize){
-                            if (!received[ind]) info.add(di);
+                            if (!received[ind]) info.add(di.getNrBloco(),di);
                             received[ind]=true;
                             DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, InetAddress.getByName(externalIP), externalPort);
                             dS.send(dPout);
