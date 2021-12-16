@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -225,6 +226,7 @@ public class FFSync {
 
     public static void writeToLogFile(String msg){
         if(pw == null) return;
-        pw.write(msg + "\n"); pw.flush();
+        LocalDateTime time = LocalDateTime.now();
+        pw.write( time.getHour() + ":" + time.getMinute() + ":" + time.getSecond() + " => " + msg + "\n"); pw.flush();
     }
 }
