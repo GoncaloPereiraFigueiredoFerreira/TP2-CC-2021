@@ -42,7 +42,7 @@ public class FTrapid {
     private static final int HEADERWRQ   = 16;
     public static final int MAXDATAPACKETSNUMBER = 32768;
 
-    private final int windowSize = 15;
+    private final int windowSize = 20;
 
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
@@ -545,8 +545,8 @@ public class FTrapid {
 
         int counter =0;
         DatagramPacket[] dpsR;
-        DataPackageInfo[] infos = new DataPackageInfo[Short.MAX_VALUE];
-        
+        DataPackageInfo[] infos = new DataPackageInfo[MAXDATAPACKETSNUMBER];
+
         //ArrayList<DataPackageInfo> info = new ArrayList<>();
 
         //TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
@@ -583,6 +583,7 @@ public class FTrapid {
                         if (ind < windowSize){
                             if (!received[ind]) infos[di.getNrBloco()]=di;  //info.add(di.getNrBloco(),di);
                             received[ind]=true;
+
                             DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, InetAddress.getByName(externalIP), externalPort);
                             dS.send(dPout);
                             if (di.getData().length < MAXDATA) {
@@ -603,11 +604,15 @@ public class FTrapid {
             for (int i=0; received[i];moved++){
                 for (int i2 =0; i2<windowSize-1;i2++) {frame[i2] = frame[i2+1]; received[i2]=received[i2+1];}
                 received[windowSize-1] = false;
-                if (!lastflag) {
+                if (!lastflag && nextPacket<(MAXDATAPACKETSNUMBER)) {
                     frame[windowSize-1]= nextPacket;
                     nextPacket++;
                 }
-                else frame[windowSize-1]=-1;
+                else {
+                    frame[windowSize-1]=-1;
+                    if (nextPacket== MAXDATAPACKETSNUMBER) {lastflag = true;lastblock=MAXDATA; }
+                }
+
             }
             // Reconhecer que n avançou
             if (moved == 0) tries++; else tries=0;
@@ -620,7 +625,7 @@ public class FTrapid {
             if (lastflag && confirmEnd== windowSize) flag = false;
         }
         int tamnh;
-        for (tamnh=0;infos[tamnh]!=null;tamnh++);
+        for (tamnh=0;tamnh<MAXDATAPACKETSNUMBER && infos[tamnh]!=null;tamnh++);
 
         ByteBuffer bf = ByteBuffer.allocate((tamnh-1)*MAXDATA + lastblock);
         for (int i =0; i<tamnh;i++) {
