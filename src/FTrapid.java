@@ -546,6 +546,7 @@ public class FTrapid {
         int counter =0;
         DatagramPacket[] dpsR;
         DataPackageInfo[] infos = new DataPackageInfo[Short.MAX_VALUE];
+        
         //ArrayList<DataPackageInfo> info = new ArrayList<>();
 
         //TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
