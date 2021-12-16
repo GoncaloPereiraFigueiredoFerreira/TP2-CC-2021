@@ -155,8 +155,8 @@ public class TransferWorker extends Thread{
         }
 
 
-        double transferTime = (double) ((System.nanoTime() - transferStartTime) / 1000);
-        FFSync.writeToLogFile("SEND FILE: " + filename + " sent! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + fileLength / transferTime * 8 + "bits/sec");
+        double transferTime = (double) ((System.nanoTime() - transferStartTime) / 1000000000);
+        FFSync.writeToLogFile("SEND FILE: " + filename + " sent! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + fileLength / transferTime * 8 + " bits/sec");
         try { fips.close(); } catch (IOException ignored) {}
     }
 
@@ -251,8 +251,8 @@ public class TransferWorker extends Thread{
             }
         }
 
-        double transferTime = (double) ((System.nanoTime() - transferStartTime) / 1000);
-        FFSync.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + (new File(filepath).length()) / transferTime * 8 + "bits/sec");
+        double transferTime = (double) ((System.nanoTime() - transferStartTime) / 1000000000);
+        FFSync.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + (new File(filepath).length()) / transferTime * 8 + " bits/sec");
 
         try { fops.close(); }
         catch (IOException ignored) {}
