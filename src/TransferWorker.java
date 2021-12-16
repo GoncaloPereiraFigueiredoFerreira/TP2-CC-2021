@@ -122,7 +122,7 @@ public class TransferWorker extends Thread{
         //Start of transfer
         FFSync.writeToLogFile("SEND FILE: Start of " + filename + " transference!");
         state = TWState.RUNNING;
-        long transferStartTime = System.currentTimeMillis();
+        long transferStartTime = System.nanoTime();
 
 
         //Number of calls of the function 'sendData' from the class FTrapid
@@ -155,7 +155,7 @@ public class TransferWorker extends Thread{
         }
 
 
-        float transferTime = (float) ((System.currentTimeMillis() - transferStartTime) / 1000);
+        double transferTime = (double) ((System.nanoTime() - transferStartTime) / 1000);
         FFSync.writeToLogFile("SEND FILE: " + filename + " sent! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + fileLength / transferTime * 8 + "bits/sec");
         try { fips.close(); } catch (IOException ignored) {}
     }
@@ -203,7 +203,7 @@ public class TransferWorker extends Thread{
 
         //Start of transfer
         FFSync.writeToLogFile("RECEIVE FILE: Start of " + filename + " transference!");
-        long transferStartTime = System.currentTimeMillis();
+        long transferStartTime = System.nanoTime();
 
         //Receives files packages
         while (keepWriting) {
@@ -251,7 +251,7 @@ public class TransferWorker extends Thread{
             }
         }
 
-        float transferTime = (float) ((System.currentTimeMillis() - transferStartTime) / 1000);
+        double transferTime = (double) ((System.nanoTime() - transferStartTime) / 1000);
         FFSync.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + transferTime + " seconds | Average Transfer Speed: " + (new File(filepath).length()) / transferTime * 8 + "bits/sec");
 
         try { fops.close(); }

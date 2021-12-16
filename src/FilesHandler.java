@@ -7,7 +7,6 @@ public class FilesHandler {
     public static Map<String,Long> fillDirMap(String path){
         Map<String,Long> filesInDir = new HashMap<>();
         File dir = new File(path);
-        System.out.println(File.separator);
         if (dir.isDirectory()){
             File[] fs = dir.listFiles();
             if (fs != null) {
