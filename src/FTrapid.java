@@ -42,6 +42,8 @@ public class FTrapid {
     private static final int HEADERWRQ   = 16;
     public static final int MAXDATAPACKETSNUMBER = 32768;
 
+    private final int windowSize = 15;
+
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
     }
@@ -432,7 +434,7 @@ public class FTrapid {
 
 
         //2º Definição do Window Size = 4 para ja, de forma a testar
-        int windowSize = 4;
+
         int nextPacket = windowSize;
 
         //Preciso de uma maneira de saber quais os pacotes que enviei
@@ -470,7 +472,7 @@ public class FTrapid {
             int counter =0;
             for (; counter < windowSize*2; counter++) { //TODO: Duplicados
                 try {
-                    if (counter==1 ) dS.setSoTimeout(50);
+                    if (counter==1 ) dS.setSoTimeout(100);
                     dpsR[counter] = new DatagramPacket(new byte[MAXACKSIZE], MAXACKSIZE);
                     dS.receive(dpsR[counter]);
                 }catch (SocketTimeoutException e){
@@ -527,7 +529,7 @@ public class FTrapid {
         int maxTries=5;
 
         //1º Definição do Window Size = 4 para ja, de forma a testar
-        int windowSize = 4;
+
         int nextPacket = windowSize;
 
         //Preciso de uma maneira de saber quais os pacotes que estou a espera de receber
@@ -543,12 +545,13 @@ public class FTrapid {
 
         int counter =0;
         DatagramPacket[] dpsR;
-        List<DataPackageInfo> info = new ArrayList<>();
+        DataPackageInfo[] infos = new DataPackageInfo[Short.MAX_VALUE];
+        //ArrayList<DataPackageInfo> info = new ArrayList<>();
+
         //TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
 
         //Começar ciclo
         while(flag){
-
 
             //1º Dar receive aos dados
             dpsR = new DatagramPacket[windowSize*2]; //TODO: Duplicados
@@ -556,7 +559,7 @@ public class FTrapid {
 
             for (;counter<windowSize*2;counter++){
                 try {
-                    if (counter == 1) dS.setSoTimeout(150);
+                    if (counter == 1) dS.setSoTimeout(100);
                     dpsR[counter] = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
 
                     dS.receive(dpsR[counter]);
@@ -577,7 +580,7 @@ public class FTrapid {
                         int ind =0;
                         for(; ind<windowSize && di.getNrBloco() != frame[ind]; ind++);
                         if (ind < windowSize){
-                            if (!received[ind]) info.add(di.getNrBloco(),di);
+                            if (!received[ind]) infos[di.getNrBloco()]=di;  //info.add(di.getNrBloco(),di);
                             received[ind]=true;
                             DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, InetAddress.getByName(externalIP), externalPort);
                             dS.send(dPout);
@@ -615,10 +618,12 @@ public class FTrapid {
             for(;lastflag && confirmEnd< windowSize &&frame[confirmEnd]==-1;confirmEnd++);
             if (lastflag && confirmEnd== windowSize) flag = false;
         }
+        int tamnh;
+        for (tamnh=0;infos[tamnh]!=null;tamnh++);
 
-        ByteBuffer bf = ByteBuffer.allocate((info.size()-1)*MAXDATA + lastblock);
-        for (DataPackageInfo dataPackageInfo : info) {
-            bf.put(dataPackageInfo.getData());
+        ByteBuffer bf = ByteBuffer.allocate((tamnh-1)*MAXDATA + lastblock);
+        for (int i =0; i<tamnh;i++) {
+            bf.put(infos[i].getData());
         }
         return bf.array();
 
