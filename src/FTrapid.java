@@ -34,7 +34,7 @@ public class FTrapid {
     public static final int MAXRDWRSIZE  = 514;
     public static final int MAXDATASIZE  = 1024;
     public static final int MAXDATA      = 1015;
-    public static final int MAXACKSIZE   = 3;
+    public static final int MAXACKSIZE   = 7;
     public static final int MAXERRORSIZE = 514;
     public static final int MAXSYNSIZE   = 514;
     public static final int MAXAUTSIZE   = 514;
@@ -43,6 +43,8 @@ public class FTrapid {
     public static final int MAXDATAPACKETSNUMBER = 32768;
 
     private final int windowSize = 20;
+    private final int MAXTIMEOUT = 60;
+    private final int MAXTIMEOUTDUP = 5;
 
     public FTrapid(DatagramSocket ds){
         this.dS = ds;
@@ -76,7 +78,7 @@ public class FTrapid {
      *
      */
 
-    //TODO: mudar data para tamamnhp de ficheiro
+
 
     private byte[] createRDWRPackage(String filename, short opcode, short port, long data){
         byte[] packet;
@@ -159,17 +161,21 @@ public class FTrapid {
      *
      *  OPCODE = 4
      *
-     *       1B        2B
-     *   | opcode | nº bloco |
+     *       1B        2B          4B
+     *   | opcode | nº bloco |  HashCode  |
      *
      *
      */
 
     private byte[] createACKPackage(short block) {
         byte[] packet;
-        ByteBuffer out = ByteBuffer.allocate(3);
+        ByteBuffer out = ByteBuffer.allocate(MAXACKSIZE);
         out.put(ACKopcode);
         out.putShort(block);
+        StringBuilder sb = new StringBuilder();
+        sb.append(block);
+        int hashcode = sb.toString().hashCode();
+        out.putInt(hashcode);
         packet = out.array();
         return packet;
     }
@@ -214,24 +220,24 @@ public class FTrapid {
      *
      *  Pacote para estabelecimento de conexão
      *
-     */
+         */
 
-    private byte[] createSYNPackage(short port,String filename) {
-        byte[] packet;
-        ByteBuffer out = ByteBuffer.allocate(MAXSYNSIZE);
-        out.put(SYNopcode);
-        out.putShort(port);
-        out.put(filename.getBytes(StandardCharsets.UTF_8));
-        out.put((byte) 0);
+        private byte[] createSYNPackage(short port,String filename) {
+            byte[] packet;
+            ByteBuffer out = ByteBuffer.allocate(MAXSYNSIZE);
+            out.put(SYNopcode);
+            out.putShort(port);
+            out.put(filename.getBytes(StandardCharsets.UTF_8));
+            out.put((byte) 0);
 
-        //Create hashcode
-        StringBuilder sb = new StringBuilder();
-        sb.append(SYNopcode).append(port).append(filename).append((byte) 0);
-        int hashcode = sb.toString().hashCode();
-        out.putInt(hashcode);
+            //Create hashcode
+            StringBuilder sb = new StringBuilder();
+            sb.append(SYNopcode).append(port).append(filename).append((byte) 0);
+            int hashcode = sb.toString().hashCode();
+            out.putInt(hashcode);
 
-        packet = out.array();
-        return packet;
+            packet = out.array();
+            return packet;
     }
     /*
      *   PACOTE DE AUT:
@@ -352,6 +358,10 @@ public class FTrapid {
         short ret;
         if (out.get(0) == ACKopcode) {
             ret = out.getShort(1);
+            StringBuilder sb = new StringBuilder();
+            sb.append(ret);
+            int hashcode = sb.toString().hashCode();
+            if (hashcode != out.getInt(3)) throw new IntegrityException() ;
         }else throw new IntegrityException();
         return ret;
     }
@@ -423,12 +433,12 @@ public class FTrapid {
     //////////Methods for workers/////
 
     public void sendData(byte[] msg) throws IOException {
-        dS.setSoTimeout(1000);
+        dS.setSoTimeout(MAXTIMEOUT);
         int maxTries=5;
 
         // 1º Passo : Converter o que é lido do ficheiro para pacotes de Data
         byte [][] packetsData = createDATAPackage(msg);
-        DatagramPacket[] dpsS = new DatagramPacket[packetsData.length]; //TODO: N preciso de manter estes dois arrays
+        DatagramPacket[] dpsS = new DatagramPacket[packetsData.length];
         for (int i=0; i< packetsData.length;i++)
             dpsS[i] = new DatagramPacket(packetsData[i],packetsData[i].length,InetAddress.getByName(externalIP), externalPort);
 
@@ -457,29 +467,29 @@ public class FTrapid {
         int tries =0;
         //Começar ciclo
         while(flag){
-            //TODO: Lidar com maximo de timeouts
+
 
 
             // 1º Enviar todos os DatagramPackets correspondentes ao frame
-            for (int i =0; i < packetsData.length&& i<windowSize && frame[i]!=-1 ; i++) {
+            for (int i =0;i<windowSize &&  frame[i] < packetsData.length && frame[i]!=-1 ; i++) {
                 if ( !acks[frame[i]])              // if ack not received for packet
                     dS.send(dpsS[frame[i]]);
             }
 
-            dpsR = new DatagramPacket[windowSize*2]; //TODO: Duplicados
+            dpsR = new DatagramPacket[windowSize*2];
 
             // 2º Esperar por acks
             int counter =0;
-            for (; counter < windowSize*2; counter++) { //TODO: Duplicados
+            for (; counter < windowSize*2; counter++) {
                 try {
-                    if (counter==1 ) dS.setSoTimeout(100);
+                    if (counter==1 ) dS.setSoTimeout(MAXTIMEOUTDUP);
                     dpsR[counter] = new DatagramPacket(new byte[MAXACKSIZE], MAXACKSIZE);
                     dS.receive(dpsR[counter]);
                 }catch (SocketTimeoutException e){
                     break;
                 }
             }
-            dS.setSoTimeout(1000);
+            dS.setSoTimeout(MAXTIMEOUT);
 
             // 3º Analisar os acks recebidos
             for (int i=0; i<counter;i++){
@@ -490,7 +500,7 @@ public class FTrapid {
                         acks[packet]=true;
 
                     }catch (IntegrityException e) {
-                        e.printStackTrace(); //TODO: Deal with this
+                        continue;
                     }
                 }
             }
@@ -520,7 +530,7 @@ public class FTrapid {
 
 
     public byte[] receiveData() throws IOException {
-        dS.setSoTimeout(1000);
+        dS.setSoTimeout(MAXTIMEOUT);
 
         short lastblock=0;
         boolean flag = true;
@@ -545,7 +555,7 @@ public class FTrapid {
 
         int counter =0;
         DatagramPacket[] dpsR;
-        DataPackageInfo[] infos = new DataPackageInfo[MAXDATAPACKETSNUMBER];
+        DataPackageInfo[] infos = new DataPackageInfo[MAXDATAPACKETSNUMBER]; //podia ser um byte array
 
         //ArrayList<DataPackageInfo> info = new ArrayList<>();
 
@@ -560,7 +570,7 @@ public class FTrapid {
 
             for (;counter<windowSize*2;counter++){
                 try {
-                    if (counter == 1) dS.setSoTimeout(100);
+                    if (counter == 1) dS.setSoTimeout(MAXTIMEOUTDUP);
                     dpsR[counter] = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
 
                     dS.receive(dpsR[counter]);
@@ -569,7 +579,7 @@ public class FTrapid {
                     break;
                 }
             }
-            dS.setSoTimeout(1000);
+            dS.setSoTimeout(MAXTIMEOUT);
 
             //2º Analisar packets recebidos e enviar acks
 
@@ -634,27 +644,6 @@ public class FTrapid {
         return bf.array();
 
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
