@@ -80,19 +80,20 @@ public class FFSync {
         if(filesInDir == null) return;
         si = new SharedInfo(folderPath, externalIP, REQUESTSPORT, filesInDir.keySet(), pw);
 
+        //Starts the worker responsible for answering the http requests
+        HTTPRequestsAnswerer httpSv = new HTTPRequestsAnswerer(localIP, si);
+        httpSv.start();
+
         //Starts a connection worker. This worker is responsible for answering requests
         ConnectionWorker cw = new ConnectionWorker(ds, ftr, si);
         cw.start();
 
-
         //Starts threads for each file that needs to be sent, taking into account the number of threads established
         sendWriteRequests(si);
 
-
         //Waits for connection worker to finish
-        try { cw.join(); }
+        try { cw.join(); httpSv.stopServer(); httpSv.join(); }
         catch (InterruptedException ignored) {}
-
 
         ds.close();
     }

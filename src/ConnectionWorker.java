@@ -42,10 +42,9 @@ public class ConnectionWorker extends Thread {
                 si.receiveRequestsLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if (si.receivers.activeCount() < (FFSync.getMAXTHREADSNUMBERPERFUNCTION() / 2)) {
-                    System.out.println("Parei de receber requests: " + LocalDateTime.now());
+                if (si.receivers.activeCount() + si.senders.activeCount() == 0) //TODO: Doesnt Work Properly
                     receive = false;
-                }else{
+                else{
                     while (si.receivers.activeCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
                         try { si.receiveRequestsCond.await(); }
                         catch (InterruptedException ignored) {}

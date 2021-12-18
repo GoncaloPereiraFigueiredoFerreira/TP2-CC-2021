@@ -202,7 +202,7 @@ public class TransferWorker extends Thread{
 
         //Start of transfer
         si.writeToLogFile("RECEIVE FILE: Start of " + filename + " transference!");
-        long transferStartTime = System.nanoTime();
+        transferStartTime = System.nanoTime();
 
         //Receives files packages
         while (keepWriting) {
@@ -249,7 +249,7 @@ public class TransferWorker extends Thread{
 
 
         //End of transference
-        double transferTime =  ((double) (System.nanoTime() - transferStartTime) / (double) 1000000000);
+        transferTime =  ((double) (System.nanoTime() - transferStartTime) / (double) 1000000000);
         si.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + String.format("%.4f",transferTime) + " seconds | Average Transfer Speed: " + String.format("%.4f", (new File(filepath).length()) / transferTime * 8) + " bits/sec");
         try { fops.close(); } catch (IOException ignored) {}
         cond = si.receiveRequestsCond;
