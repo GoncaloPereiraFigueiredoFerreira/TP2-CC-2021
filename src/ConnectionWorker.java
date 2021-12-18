@@ -1,27 +1,19 @@
 import java.io.IOException;
 import java.net.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConnectionWorker extends Thread {
-    private final String externalIP; //IP of the other client
-    private final String folderPath;
+    private final int TIMEOUT = 10000;
     private final DatagramSocket ds;
     private final FTrapid ftr;
-    private final ReentrantLock receiveLock;
-    private final ReentrantLock sendLock;
-    private final Map<String, TransferWorker> requestsReceived; //Keeps track of the files received and the files that are being received
-    private final ThreadGroup receivers;
+    private final SharedInfo si;
 
-    public ConnectionWorker(ThreadGroup receivers, String externalIP, String folderPath, DatagramSocket ds, FTrapid ftr, ReentrantLock receiveLock, ReentrantLock sendLock, Map<String, TransferWorker> requestsReceived) {
-        this.receivers = receivers;
-        this.externalIP = externalIP;
-        this.folderPath = folderPath;
-        this.ds = ds;
+    public ConnectionWorker(DatagramSocket ds, FTrapid ftr, SharedInfo si) {
+        this.ds  = ds;
         this.ftr = ftr;
-        this.receiveLock = receiveLock;
-        this.sendLock = sendLock;
-        this.requestsReceived = requestsReceived;
+        this.si  = si;
     }
 
 
@@ -38,15 +30,31 @@ public class ConnectionWorker extends Thread {
 
         //Tries to receive packets until the throw of a SocketTimeoutException along with half of the threads disponibilized for receiving not being used
         while (receive) {
+            //Set timeout
             try {
-                receiveLock.lock();
+                ds.setSoTimeout(TIMEOUT);
+            } catch (SocketException e) {
+                si.writeToLogFile("REQUEST SOCKET (ERROR): Error changing socket settings!");
+            }
+
+            //Receive Package
+            try {
+                si.receiveRequestsLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if (receivers.activeCount() < (FFSync.getMAXTHREADSNUMBERPERFUNCTION() / 2)) receive = false;
+                if (si.receivers.activeCount() < (FFSync.getMAXTHREADSNUMBERPERFUNCTION() / 2)) {
+                    System.out.println("Parei de receber requests: " + LocalDateTime.now());
+                    receive = false;
+                }else{
+                    while (si.receivers.activeCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
+                        try { si.receiveRequestsCond.await(); }
+                        catch (InterruptedException ignored) {}
+                    }
+                }
             } catch (IOException ioException) {
                 handlePackage = false;
             } finally {
-                receiveLock.unlock();
+                si.receiveRequestsLock.unlock();
             }
 
             if (handlePackage && receive) {
@@ -75,25 +83,15 @@ public class ConnectionWorker extends Thread {
 
             //New Request. The file is not being received nor was it received.
             //Ignores duplicates. Expects resends from the receiver (TransferWorker) created.
-            if (!requestsReceived.containsKey(filename)) {
+            if (!si.status.wasRequestReceived(filename)) {
                 dsTransferWorker = FFSync.createDatagramSocket();
-                TransferWorker tw = new TransferWorker(receivers, false, true, folderPath, filename, dsTransferWorker, externalIP, rpi.getPort(), sendLock);
-
-                //TODO: Adicionar sleep caso não hajam threads para responder às necessidades dos requests. N deve ser preciso, o outro cliente tem lock para o numero de threads a enviar e o receive é bloqueante
-                while (receivers.activeCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
-                   try { sleep(500); }
-                   catch (InterruptedException ignored) {}
-                }
-
+                TransferWorker tw = new TransferWorker(si.receivers, false, true, filename, dsTransferWorker, rpi.getPort(), si);
                 tw.start();
-
-                //TODO: Provavelmente vai ser necessário adicionar locks para as estruturas de dados
-                requestsReceived.put(filename, tw);
+                si.status.addRequestReceived(filename,tw);
             }
-        } catch (IntegrityException ignored) {} //Expects a resend.
+        } catch (IntegrityException ignored) {System.out.println("Integrity/Opcode receiveWriteReq");} //Expects a resend.
     }
 
-    //TODO: Add all the errors and handled them (Maior parte é simplesmente um log a dizer que houve erro provavelmente)
     private void receiveError(DatagramPacket dp) {
         ErrorSynPackageInfo espi;
         try {
@@ -104,7 +102,6 @@ public class ConnectionWorker extends Thread {
 
             //Connection error
             if (errorCode == 400) {
-                //TODO: Maybe throw exception to end the program
                 //throw new ConnectException();
             } else if (errorCode == 401) {
                 //Remover o ficheiro na maquina que recebe
