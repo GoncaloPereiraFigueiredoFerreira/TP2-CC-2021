@@ -8,7 +8,7 @@ import static java.lang.Thread.sleep;
 
 public class FFSync {
     private static int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
-    private static int REQUESTSPORT = 11111;
+    private static int REQUESTSPORT = 9999;
     private static String externalIP;
     private static PrintWriter pw;
 
@@ -165,17 +165,17 @@ public class FFSync {
             datagramSocket = createDatagramSocket();
             while (datagramSocket == null) {
                 //Sleeps 1 second and tries to get a valid socket again
-                try {
-                    sleep(500);
+                /*try {
+                    sleep(25);
                 } catch (InterruptedException ignored) {
-                }
+                }*/
                 datagramSocket = createDatagramSocket();
             }
 
             //Waits for threads(senders) to be available
             while (senders.activeCount() >= FFSync.MAXTHREADSNUMBERPERFUNCTION) {
-                try   {sleep(500);}
-                catch (InterruptedException ignored) {} //Maybe use condition.signal
+                /*try   {sleep(25);}
+                catch (InterruptedException ignored) {} *///Maybe use condition.signal
             }
 
             //Creates a Transfer Worker. This worker is responsible for sending the file to the other client, after performing a request to the other client, and receiving confirmation(SYN).

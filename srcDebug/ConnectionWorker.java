@@ -1,5 +1,6 @@
 import java.io.IOException;
 import java.net.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -32,6 +33,12 @@ public class ConnectionWorker extends Thread {
 
 
     public void receive() {
+        try {
+            ds.setSoTimeout(10000);
+        } catch (SocketException e) {
+            e.printStackTrace();
+        }
+
         DatagramPacket dp     = new DatagramPacket(new byte[FTrapid.MAXRDWRSIZE], FTrapid.MAXRDWRSIZE);
         boolean receive       = true, //Used as a flag that indicates if the thread should continue to listen for packets
                 handlePackage = true; //Flag that indicates if the package should be handled
@@ -42,7 +49,10 @@ public class ConnectionWorker extends Thread {
                 receiveLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if (receivers.activeCount() < (FFSync.getMAXTHREADSNUMBERPERFUNCTION() / 2)) receive = false;
+                if (receivers.activeCount() < (FFSync.getMAXTHREADSNUMBERPERFUNCTION() / 2)) {
+                    System.out.println("Parei de receber requests: " + LocalDateTime.now());
+                    receive = false;
+                }
             } catch (IOException ioException) {
                 handlePackage = false;
             } finally {
@@ -81,8 +91,8 @@ public class ConnectionWorker extends Thread {
 
                 //TODO: Adicionar sleep caso não hajam threads para responder às necessidades dos requests. N deve ser preciso, o outro cliente tem lock para o numero de threads a enviar e o receive é bloqueante
                 while (receivers.activeCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
-                   try { sleep(500); }
-                   catch (InterruptedException ignored) {}
+                   //try { sleep(25); }
+                   //catch (InterruptedException ignored) {}
                 }
 
                 tw.start();

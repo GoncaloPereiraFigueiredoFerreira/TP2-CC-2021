@@ -476,11 +476,11 @@ public class FTrapid {
                     dS.send(dpsS[frame[i]]);
             }
 
-            dpsR = new DatagramPacket[windowSize*2];
+            dpsR = new DatagramPacket[windowSize*10];
 
             // 2º Esperar por acks
             int counter =0;
-            for (; counter < windowSize*2; counter++) {
+            for (; counter < windowSize*10; counter++) {
                 try {
                     if (counter==1 ) dS.setSoTimeout(MAXTIMEOUTDUP);
                     dpsR[counter] = new DatagramPacket(new byte[MAXACKSIZE], MAXACKSIZE);

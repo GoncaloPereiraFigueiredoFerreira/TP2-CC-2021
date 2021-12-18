@@ -92,7 +92,7 @@ public class TransferWorker extends Thread{
         int nrTimeouts = 10;
 
         try {
-            ds.setSoTimeout(250);
+            ds.setSoTimeout(50);
 
             while (keepSendingRequest) {
                 try {
@@ -189,7 +189,7 @@ public class TransferWorker extends Thread{
 
         //Defines timeouts
         int nrTimeouts = 10;
-        try{ ds.setSoTimeout(250); }
+        try{ ds.setSoTimeout(50); }
         catch (SocketException se){
             state = TWState.ERROROCURRED;
             FFSync.writeToLogFile("RECEIVE FILE (ERROR): Error creating/accessing socket (" + filename + ")!");
