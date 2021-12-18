@@ -536,7 +536,7 @@ public class FTrapid {
         boolean flag = true;
         boolean lastflag = false;
         int tries=0;
-        int maxTries=5;
+        int maxTries=20;
 
         //1º Definição do Window Size = 4 para ja, de forma a testar
 
@@ -552,7 +552,7 @@ public class FTrapid {
         boolean[] received = new boolean[windowSize];
         Arrays.fill(received,false);
 
-
+        boolean flag4=false;
         int counter =0;
         DatagramPacket[] dpsR;
         DataPackageInfo[] infos = new DataPackageInfo[MAXDATAPACKETSNUMBER]; //podia ser um byte array
@@ -564,11 +564,13 @@ public class FTrapid {
         //Começar ciclo
         while(flag){
 
+            int fator =10;
+            if (lastflag) fator = 1;
             //1º Dar receive aos dados
-            dpsR = new DatagramPacket[windowSize*2]; //TODO: Duplicados
+            dpsR = new DatagramPacket[windowSize*fator]; //TODO: Duplicados
             counter=0;
 
-            for (;counter<windowSize*2;counter++){
+            for (;counter<windowSize*fator;counter++){
                 try {
                     if (counter == 1) dS.setSoTimeout(MAXTIMEOUTDUP);
                     dpsR[counter] = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
@@ -587,15 +589,26 @@ public class FTrapid {
                 if (getOpcode(dpsR[i].getData())==DATAopcode){
                     try {
                         DataPackageInfo di =readDataPacket(dpsR[i].getData());
+
                         //verificar se o bloco recebido esta no frame
                         int ind =0;
                         for(; ind<windowSize && di.getNrBloco() != frame[ind]; ind++);
-                        if (ind < windowSize){
+                        if (di.getNrBloco()<frame[0] || flag4 ) {
+                            DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, externalIP, externalPort);
+                            dS.send(dPout);
+
+
+                        }
+                        else if (ind < windowSize){
                             if (!received[ind]) infos[di.getNrBloco()]=di;  //info.add(di.getNrBloco(),di);
                             received[ind]=true;
 
-                            DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE,externalIP, externalPort);
+                            DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, externalIP, externalPort);
+
                             dS.send(dPout);
+
+
+
                             if (di.getData().length < MAXDATA) {
                                 lastflag=true;
                                 lastblock = (short) di.getData().length;
@@ -603,10 +616,16 @@ public class FTrapid {
                             }
                         }
                     } catch (IntegrityException e) {
-                       continue;
+                        System.out.println("Integrity/Opcode receiveData");
+                        counter--;
+                        continue;
                     }
 
+                }  else {
+                    //System.out.println("Opcode estrangeiro sendData: " + getOpcode(dpsR[i].getData()));
+                    counter--;
                 }
+
             }
 
             // 3º organizar frames
@@ -625,14 +644,19 @@ public class FTrapid {
 
             }
             // Reconhecer que n avançou
-            if (moved == 0) tries++; else tries=0;
-            if (tries==maxTries) throw new IOException("Timeouts Excedidos");
+            if (counter== 0 && moved == 0) tries++; else tries=0;
+            if ( counter== 0 && tries==maxTries) {
+                System.out.println("Frame : "+ Arrays.toString(frame));
+                System.out.println("ACKS : " + Arrays.toString(received));
+                throw new IOException("Timeouts Excedidos");
+            }
 
 
             //confirmar que todos foram enviados
             int confirmEnd=0;
             for(;lastflag && confirmEnd< windowSize &&frame[confirmEnd]==-1;confirmEnd++);
-            if (lastflag && confirmEnd== windowSize) flag = false;
+            if (lastflag && confirmEnd== windowSize && counter==0) flag = false;
+            if (lastflag && confirmEnd== windowSize) flag4=true;
         }
         int tamnh;
         for (tamnh=0;tamnh<MAXDATAPACKETSNUMBER && infos[tamnh]!=null;tamnh++);
@@ -644,8 +668,6 @@ public class FTrapid {
         return bf.array();
 
     }
-
-
 
 
 
