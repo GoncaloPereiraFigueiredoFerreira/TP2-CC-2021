@@ -2,9 +2,9 @@ import java.io.*;
 import java.net.*;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.locks.ReentrantLock;
-
 import static java.lang.Thread.sleep;
+
+//TODO: Receive com número superior ao n de threads n está a funcionar
 
 public class FFSync {
     private static int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
@@ -160,14 +160,20 @@ public class FFSync {
             }
 
             //Waits for threads(senders) to be available
-            while (si.senders.activeCount() >= FFSync.MAXTHREADSNUMBERPERFUNCTION) {
-                System.out.println("SendRequestCond awaiting");
-                try { si.sendRequestsCond.await(); }
-                catch (InterruptedException ignored) {}
+            try {
+                si.sendRequestsLock.lock();
+
+                while (si.getSendersCount() >= FFSync.MAXTHREADSNUMBERPERFUNCTION)
+                    si.sendRequestsCond.await();
+
+                //Increments the number of threads
+                si.incSendersCount();
             }
+            catch (InterruptedException ignored) {}
+            finally { si.sendRequestsLock.unlock(); }
 
             //Creates a Transfer Worker. This worker is responsible for sending the file to the other client, after performing a request to the other client, and receiving confirmation(SYN).
-            TransferWorker tw = new TransferWorker(si.senders, true, false, filename, datagramSocket, (short) si.requestsPort, si);
+            TransferWorker tw = new TransferWorker(true, false, filename, datagramSocket, (short) si.requestsPort, si);
             tw.start();
             si.status.addRequestSent(filename, tw);
         }

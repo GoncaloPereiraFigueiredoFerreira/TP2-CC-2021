@@ -27,8 +27,7 @@ public class TransferWorker extends Thread{
     private Long transferStartTime = null;
     private Double transferTime    = null;
 
-    public TransferWorker(ThreadGroup tg, boolean requester, boolean receiver, String filename, DatagramSocket ds, short externalPort, SharedInfo si){
-        super(tg,filename);
+    public TransferWorker(boolean requester, boolean receiver, String filename, DatagramSocket ds, short externalPort, SharedInfo si){
         this.state      = TWState.NEW;
         this.requester  = requester;
         this.receiver   = receiver;
@@ -43,7 +42,10 @@ public class TransferWorker extends Thread{
     public void run() {
         //Verifies the value of mode, to select the behaviour of the thread
         if(requester) {
-            if(!receiver) runSendFile();
+            if(!receiver) {
+                runSendFile();
+                si.decSendersCount();
+            }
             /* For RRQs
             else {
                 //(CHECK) send ACK?
@@ -51,7 +53,10 @@ public class TransferWorker extends Thread{
             }*/
         }
         else {
-            if(receiver) runReceiveFile();
+            if(receiver) {
+                runReceiveFile();
+                si.decReceiversCount();
+            }
             /* For RRQs
             else {
                 //(CHECK) receive ack?
@@ -103,10 +108,12 @@ public class TransferWorker extends Thread{
 
             while (keepSendingRequest) {
                 try {
+                    si.sendRequestsLock.lock();
                     ftr.requestRRWR(filename, (short) ds.getLocalPort(), (short) 2, 0);
                     si.writeToLogFile("REQUEST: Sent Write Request (" + filename +")!");
                 }
                 catch (OpcodeNotRecognizedException | IOException ignored) {}
+                finally { si.sendRequestsLock.unlock(); }
 
                 try { if(receivedSyn()) keepSendingRequest = false; }
                 catch (SocketTimeoutException ste) {

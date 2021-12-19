@@ -5,7 +5,7 @@ import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConnectionWorker extends Thread {
-    private final int TIMEOUT = 10000;
+    private final int TIMEOUT = 2500;
     private final DatagramSocket ds;
     private final FTrapid ftr;
     private final SharedInfo si;
@@ -42,12 +42,15 @@ public class ConnectionWorker extends Thread {
                 si.receiveRequestsLock.lock();
                 ds.receive(dp);
             } catch (SocketTimeoutException s) {
-                if (si.receivers.activeCount() + si.senders.activeCount() == 0) //TODO: Doesnt Work Properly
+                if (si.getTotalTransferWorkersCount() == 0)
                     receive = false;
                 else{
-                    while (si.receivers.activeCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
-                        try { si.receiveRequestsCond.await(); }
+                    while (si.getReceiversCount() >= FFSync.getMAXTHREADSNUMBERPERFUNCTION()) {
+                        try {
+                            si.receiveRequestsLock.lock();
+                            si.receiveRequestsCond.await(); }
                         catch (InterruptedException ignored) {}
+                        finally { si.receiveRequestsLock.unlock(); }
                     }
                 }
             } catch (IOException ioException) {
@@ -84,8 +87,9 @@ public class ConnectionWorker extends Thread {
             //Ignores duplicates. Expects resends from the receiver (TransferWorker) created.
             if (!si.status.wasRequestReceived(filename)) {
                 dsTransferWorker = FFSync.createDatagramSocket();
-                TransferWorker tw = new TransferWorker(si.receivers, false, true, filename, dsTransferWorker, rpi.getPort(), si);
+                TransferWorker tw = new TransferWorker(false, true, filename, dsTransferWorker, rpi.getPort(), si);
                 tw.start();
+                si.incReceiversCount();
                 si.status.addRequestReceived(filename,tw);
             }
         } catch (IntegrityException ignored) {System.out.println("Integrity/Opcode receiveWriteReq");} //Expects a resend.

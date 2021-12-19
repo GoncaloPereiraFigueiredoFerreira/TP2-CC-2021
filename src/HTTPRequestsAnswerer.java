@@ -109,8 +109,8 @@ public class HTTPRequestsAnswerer extends Thread {
 
             for(TransferWorker tw : collection) {
                 twState = tw.getTWState();
-                sb.append("-> ").append("Name: ").append(tw.getFileName()).append("   ")
-                        .append("State: ").append(stateStringMap.get(twState)).append("   ");
+                sb.append("-> ").append("Name: ").append(tw.getFileName()).append("\n   ")
+                        .append("State: ").append(stateStringMap.get(twState)).append("\n   ");
 
                 if(twState == TransferWorker.TWState.RUNNING){
                     sb.append("Time Ocurred: ");
@@ -129,50 +129,4 @@ public class HTTPRequestsAnswerer extends Thread {
         }
 
     }
-
-
-   /* public static void Html_princ(Map<Integer,String> info, String ip) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(ip, 8001), 0);
-
-        server.createContext("/", new MyHttpHandler(info));
-
-        server.start();
-    }
-
-    static class MyHttpHandler implements HttpHandler {
-
-        Map<Integer, String> info;
-
-        public MyHttpHandler(Map<Integer,String> info) {
-            this.info = info;
-        }
-
-        public void handle(HttpExchange httpExchange) throws IOException {
-
-            handleResponse(httpExchange, info);
-        }
-
-        private void handleResponse(HttpExchange httpExchange, Map<Integer,String> info) throws IOException {
-
-            OutputStream outputStream = httpExchange.getResponseBody();
-
-            StringBuilder htmlBuilder = new StringBuilder();
-
-
-            //htmlBuilder.append(info).append(info[1]);
-
-
-            String htmlResponse = StringEscapeUtils.escapeHtml(htmlBuilder.toString());
-
-            httpExchange.sendResponseHeaders(200, htmlResponse.length());
-
-            outputStream.write(htmlResponse.getBytes());
-
-            outputStream.flush();
-
-            outputStream.close();
-
-        }
-    }*/
-
 }
