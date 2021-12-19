@@ -3,9 +3,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Status {
     private final ReentrantReadWriteLock rwlock = new ReentrantReadWriteLock();
-    private final Map<String,TransferWorker> requestsSent     = new HashMap<>();
-    private final Map<String,TransferWorker> requestsReceived = new HashMap<>();
-    private final Deque<String> filesToBeSent;
+    private final Map<String,TransferWorker> requestsSent     = new HashMap<>(); //associates the name of the file, with the TransferWorker that sent a request
+    private final Map<String,TransferWorker> requestsReceived = new HashMap<>(); //associates the name of the file, with the TransferWorker that will handle the request received
+    private final Deque<String> filesToBeSent;//stores the name of the files that need to be sent
 
     public Status (Collection<String> filesToBeSent){
         this.filesToBeSent = new ArrayDeque<>(filesToBeSent);

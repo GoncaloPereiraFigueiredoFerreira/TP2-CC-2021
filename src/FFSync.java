@@ -8,7 +8,7 @@ import static java.lang.Thread.sleep;
 
 public class FFSync {
     private static int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
-    private static int REQUESTSPORT = 9999;
+    private static final int REQUESTSPORT = 9999;
     private static PrintWriter pw;
 
     public static void main(String[] args) {

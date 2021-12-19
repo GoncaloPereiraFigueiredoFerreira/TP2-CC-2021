@@ -1,23 +1,22 @@
 import java.io.PrintWriter;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class SharedInfo {
-    public final Status status;
+    public final Status status; //stores the state of the transfers
     public final String folderPath; //path to the shared folder
-    public final InetAddress externalIP;
-    public final int requestsPort;
-    public final ReentrantLock receiveRequestsLock = new ReentrantLock();
-    public final Condition receiveRequestsCond     = receiveRequestsLock.newCondition();
-    public final ReentrantLock sendRequestsLock    = new ReentrantLock();
-    public final Condition sendRequestsCond        = sendRequestsLock.newCondition();
-    private final PrintWriter pw;
+    public final InetAddress externalIP; //ip adress of the client in the other end
+    public final int requestsPort; //port used, exclusively, for exchanging requests
+    public final ReentrantLock receiveRequestsLock = new ReentrantLock(); //Acquiring this lock is necessary to receive a request
+    public final Condition receiveRequestsCond     = receiveRequestsLock.newCondition(); //concurrence control, i.e., makes possible, controlling the number of threads receiving files
+    public final ReentrantLock sendRequestsLock    = new ReentrantLock(); //Acquiring this lock is necessary to send a request
+    public final Condition sendRequestsCond        = sendRequestsLock.newCondition(); //concurrence control, i.e., makes possible, controlling the number of threads sending files
+    private final PrintWriter pw; //Used to print a message to a log file
 
-    private final ReentrantLock threadsCounterLock = new ReentrantLock();
+    private final ReentrantLock threadsCounterLock = new ReentrantLock(); //Used to control the changes to the instance variables 'sendersCount' and 'receiversCount'
     private int sendersCount   = 0;
     private int receiversCount = 0;
 
@@ -35,8 +34,6 @@ public class SharedInfo {
         pw.write( time.getHour() + ":" + time.getMinute() + ":" + time.getSecond() + " => " + msg + "\n"); pw.flush();
     }
 
-
-    //TODO: send e receive locks podem ser usados para isto
     public void incSendersCount() {
         try{
             threadsCounterLock.lock();
