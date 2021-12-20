@@ -6,7 +6,7 @@ Projeto realizado no ambito da UC de Comunicações por Computadores, no curso L
 Para utilizar o programa deverá ser utilizado o comando:
 
 ```
-  java -jar TP2-CC-2021.jar <pasta partilhada> <ip externo>
+  java -jar TP2-CC-2021.jar <pasta partilhada> <ip externo> <nº threads maximo>
 ```  
 Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
 ```
@@ -14,7 +14,7 @@ Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
 ``` 
 
 ```
-  java FFSync <pasta partilhada> <ip externo>
+  java FFSync <pasta partilhada> <ip externo> <nº threads maximo>
 ``` 
 
 
