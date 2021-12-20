@@ -1,15 +1,11 @@
 import java.io.*;
 import java.net.*;
-import java.nio.ByteBuffer;
-import java.nio.file.attribute.UserDefinedFileAttributeView;
-import java.time.Clock;
-import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class TransferWorker extends Thread{
     private final int MAXDATAPERCONNECTION = FTrapid.MAXDATA * FTrapid.MAXDATAPACKETSNUMBER; //limit of bytes sent by FTrapid in one connection
+    private final int MAXTIMEOUT =100;
 
     private TWState state;
     public enum TWState {NEW, RUNNING, TIMEDOUT, ERROROCURRED, TERMINATED}
@@ -94,7 +90,7 @@ public class TransferWorker extends Thread{
             fips = new FileInputStream(file);
         } catch (FileNotFoundException fnfe) {
             state = TWState.ERROROCURRED;
-            si.writeToLogFile("SEND FILE (ERROR): Could not find file(" + filename +")!");
+            si.writeToLogFile("SEND FILE (ERROR): Could not find file(" + filename +"): "+ fnfe.getMessage() );
             return;
         }
 
@@ -104,7 +100,7 @@ public class TransferWorker extends Thread{
         int nrTimeouts = 10;
 
         try {
-            ds.setSoTimeout(50);
+            ds.setSoTimeout(MAXTIMEOUT);
 
             while (keepSendingRequest) {
                 try {
@@ -112,7 +108,7 @@ public class TransferWorker extends Thread{
                     ftr.requestRRWR(filename, (short) ds.getLocalPort(), (short) 2, 0);
                     si.writeToLogFile("REQUEST: Sent Write Request (" + filename +")!");
                 }
-                catch (OpcodeNotRecognizedException | IOException ignored) {}
+                catch (Exception ignored) {}
                 finally { si.sendRequestsLock.unlock(); }
 
                 try { if(receivedSyn()) keepSendingRequest = false; }
@@ -122,7 +118,7 @@ public class TransferWorker extends Thread{
                 }
             }
         } catch (IOException ioe) {
-            si.writeToLogFile("SEND FILE (ERROR): Connection failed (" + filename + ")!");
+            si.writeToLogFile("SEND FILE (ERROR): Connection failed (" + filename + "): " + ioe.getMessage());
         }
 
         if(nrTimeouts == 0) {
@@ -152,10 +148,9 @@ public class TransferWorker extends Thread{
             try {
                 fips.read(buffer);
                 ftr.sendData(buffer);
-            } catch (IOException e) {
+            } catch (IOException | MaxTimeoutsReached e) {
                 state = TWState.ERROROCURRED;
-                System.out.println(LocalDateTime.now());
-                si.writeToLogFile("SEND FILE (ERROR): Error reading/sending file (" + filename + ")!");
+                si.writeToLogFile("SEND FILE (ERROR): Error reading/sending file (" + filename + "): " + e.getMessage());
                 return;
             }
         }
@@ -194,10 +189,10 @@ public class TransferWorker extends Thread{
 
         //Defines timeouts
         int nrTimeouts = 10;
-        try{ ds.setSoTimeout(50); }
+        try{ ds.setSoTimeout(MAXTIMEOUT); }
         catch (SocketException se){
             state = TWState.ERROROCURRED;
-            si.writeToLogFile("RECEIVE FILE (ERROR): Error creating/accessing socket (" + filename + ")!");
+            si.writeToLogFile("RECEIVE FILE (ERROR): Error creating/accessing socket (" + filename + "): " + se.getMessage());
             return;
         }
 
@@ -205,7 +200,7 @@ public class TransferWorker extends Thread{
         try {
             ftr.answer((short) 2, (short) ds.getLocalPort(), filename);
             si.writeToLogFile("REQUEST (SYN): Accepted Write Request (" + filename +")!");
-        } catch (OpcodeNotRecognizedException | IOException ignored) {}
+        } catch (Exception ignored) {}
 
         //Start of transfer
         si.writeToLogFile("RECEIVE FILE: Start of " + filename + " transference!");
@@ -230,7 +225,7 @@ public class TransferWorker extends Thread{
                 //will keep receiving until the length, of the received buffer, is different than MAXDATAPERCONNECTION
                 if (buffer.length < MAXDATAPERCONNECTION) keepWriting = false;
 
-            } catch (SocketTimeoutException ste){
+            } catch (MaxTimeoutsReached ste){
                 if(nrTimeouts == 0) {
                     state = TWState.TIMEDOUT;
                     si.writeToLogFile("RECEIVE FILE (TIMEOUT): Limit of timeouts reached (" + filename + ")!");
@@ -243,11 +238,11 @@ public class TransferWorker extends Thread{
                     try {
                         ftr.answer((short) 2, (short) ds.getLocalPort() , filename);
                         si.writeToLogFile("REQUEST (SYN): Accepted Write Request (" + filename +")!");
-                    } catch (OpcodeNotRecognizedException | IOException ignored) {}
+                    } catch (Exception ignored) {}
                 }
             } catch (Exception e) {
                 state = TWState.ERROROCURRED;
-                si.writeToLogFile("RECEIVE FILE (ERROR): Could not write to file (" + filename + ")!");
+                si.writeToLogFile("RECEIVE FILE (ERROR): Could not write to file (" + filename + "): "+ e.getMessage());
                 try { fops.close(); } catch (IOException ignored) {}
                 FilesHandler.deleteFile(filepath);
                 return;
@@ -280,7 +275,7 @@ public class TransferWorker extends Thread{
                     return true;
                 }
                 else return false;
-            } catch (IntegrityException | OpcodeNotRecognizedException ignored) {
+            } catch (IntegrityException e) {
                 System.out.println("Integrity/Opcode receiveSyn");
                 //OpcodeNotRecognizedException doesn't happen in here. Checked in the caller function
                 //Ignores integrity exception, and expects resend

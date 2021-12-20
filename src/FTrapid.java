@@ -9,10 +9,7 @@ import java.util.*;
 *
 * Slinding Window Version : Selective Repeat
 *
-*     Need to essentially change all send and receive protocol
-*       -> Receiver individually acks every received packets
-*       -> Sender retransmits each unAcked plt
-*       -> Sender Window
+*
 */
 
 
@@ -23,6 +20,7 @@ public class FTrapid {
     private InetAddress externalIP;
     private short externalPort;
 
+    //Operation Codes
     public static final byte RDopcode   = 1;
     public static final byte WRopcode   = 2;
     public static final byte DATAopcode = 3;
@@ -31,9 +29,10 @@ public class FTrapid {
     public static final byte SYNopcode  = 6;
     public static final byte AUTopcode  = 7;
 
+
     public static final int MAXRDWRSIZE  = 514;
     public static final int MAXDATASIZE  = 1024;
-    public static final int MAXDATA      = 1015;
+    public static final int MAXDATA      = MAXDATASIZE - 9;
     public static final int MAXACKSIZE   = 7;
     public static final int MAXERRORSIZE = 514;
     public static final int MAXSYNSIZE   = 514;
@@ -42,13 +41,12 @@ public class FTrapid {
     private static final int HEADERWRQ   = 16;
     public static final int MAXDATAPACKETSNUMBER = 32768;
 
-    private final int windowSize = 20;
+
+    private final int windowSize = 25;
     private final int MAXTIMEOUT = 60;
     private final int MAXTIMEOUTDUP = 5;
 
-    public FTrapid(DatagramSocket ds){
-        this.dS = ds;
-    }
+
     public FTrapid(DatagramSocket ds, InetAddress externalIP, short externalPort){
         this.dS = ds;this.externalIP = externalIP; this.externalPort=externalPort;
     }
@@ -132,7 +130,7 @@ public class FTrapid {
 
             // packetLength max = MAXDATA
             packetLength = (short) Integer.min(data.length - ofset,MAXDATA);
-            //header de DATA = 5
+
             ByteBuffer out = ByteBuffer.allocate(5+packetLength+4);
             out.put(DATAopcode);
             out.putShort((short) i);
@@ -142,6 +140,7 @@ public class FTrapid {
             out.put(data,ofset,packetLength);
             ofset+=packetLength;
             String dados = new String(temp.array(),StandardCharsets.UTF_8);
+
             //Create HashCode
             StringBuilder sb = new StringBuilder();
             sb.append(DATAopcode).append(i).append(packetLength).append(dados);
@@ -164,7 +163,7 @@ public class FTrapid {
      *       1B        2B          4B
      *   | opcode | nº bloco |  HashCode  |
      *
-     *
+     * Pacote de confirmação de receção
      */
 
     private byte[] createACKPackage(short block) {
@@ -190,7 +189,7 @@ public class FTrapid {
      *   | opcode | Error Code | FileName | 0 |  HashCode  |
      *
      *
-     *
+     * Pacote de sinalização de erro
      */
     private byte[] createERRORPackage(short error,String filename) {
         byte[] packet;
@@ -372,7 +371,7 @@ public class FTrapid {
      *
      */
 
-    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException, OpcodeNotRecognizedException {
+    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException{
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         ErrorSynPackageInfo ret;
         out.put(packet);
@@ -395,7 +394,7 @@ public class FTrapid {
             if (generatedHash !=hash) throw new IntegrityException();
 
             ret= new ErrorSynPackageInfo(msg,filename);
-        }else throw new OpcodeNotRecognizedException();
+        }else throw new IntegrityException();
         return ret;
     }
 
@@ -428,13 +427,18 @@ public class FTrapid {
     }
 
 
-    ///////////////////////// Transmition Control ///////////////////////
+    ///////////////////////// Transmission Control ///////////////////////
 
     //////////Methods for workers/////
 
-    public void sendData(byte[] msg) throws IOException {
+    /*
+    *   Método para o Envio de Pacotes de dados seguindo o método: Sliding Window: Selective Repeat
+    *
+    */
+
+    public void sendData(byte[] msg) throws IOException,MaxTimeoutsReached {
         dS.setSoTimeout(MAXTIMEOUT);
-        int maxTries=5;
+        int maxTries=10;
 
         // 1º Passo : Converter o que é lido do ficheiro para pacotes de Data
         byte [][] packetsData = createDATAPackage(msg);
@@ -443,68 +447,71 @@ public class FTrapid {
             dpsS[i] = new DatagramPacket(packetsData[i],packetsData[i].length,externalIP, externalPort);
 
 
-        //2º Definição do Window Size = 4 para ja, de forma a testar
+        // 2º Criar e preencher a Sliding Window
+        int[] frame = new int[windowSize];
+
+        for (int i =0; i<windowSize;i++) frame[i]=i;
 
         int nextPacket = windowSize;
 
-        //Preciso de uma maneira de saber quais os pacotes que enviei
-        int[] frame = new int[windowSize];
+        // 3º Criar e preencher array de ACKs
 
-        // Codigo para gerar Window
-        for (int i =0; i<windowSize;i++) frame[i]=i;
-
-
-        // Array de Controlo de Acks
-        //Gerar
         boolean[] acks = new boolean[packetsData.length];
         Arrays.fill(acks,false);
         int indexAcked=0;
 
-        // Pacotes recebidos
-        DatagramPacket[] dpsR;
 
+        DatagramPacket[] dpsR;
         boolean flag = true;
         int tries =0;
-        //Começar ciclo
+
+
+        //4º Começar o Ciclo de envio
         while(flag){
 
 
 
-            // 1º Enviar todos os DatagramPackets correspondentes ao frame
+            //Enviar todos os DatagramPackets correspondentes ao frame
+                    //Envia todos os pacotes da window cujo ACK ainda não tenha sido recebido
             for (int i =0;i<windowSize &&  frame[i] < packetsData.length && frame[i]!=-1 ; i++) {
-                if ( !acks[frame[i]])              // if ack not received for packet
-                    dS.send(dpsS[frame[i]]);
+                if ( !acks[frame[i]]) dS.send(dpsS[frame[i]]);
             }
 
+            // Criação de array preenchido por todas as mensagens recebidas
             dpsR = new DatagramPacket[windowSize*2];
 
             // 2º Esperar por acks
-            int counter =0;
+
+            int counter =0;     //Contador de Pacotes recebidos
+
+            // Ciclo que "limpa" todos os pacotes recebidos do receiver buffer
             for (; counter < windowSize*2; counter++) {
                 try {
-                    if (counter==1 ) dS.setSoTimeout(MAXTIMEOUTDUP);
+                    if (counter==1 ) dS.setSoTimeout(MAXTIMEOUTDUP); //Após receber o 1º pacote o timeout é
+                                                                    // reduzido de forma a apanhar os restantes pacotes
+
                     dpsR[counter] = new DatagramPacket(new byte[MAXACKSIZE], MAXACKSIZE);
                     dS.receive(dpsR[counter]);
                 }catch (SocketTimeoutException e){
-                    break;
-                }
+                    break;}
             }
-            dS.setSoTimeout(MAXTIMEOUT);
+            dS.setSoTimeout(MAXTIMEOUT); //Repõe o timeout
 
-            // 3º Analisar os acks recebidos
+            // 3º Analisar os pacotes recebidos
             for (int i=0; i<counter;i++){
                 if (getOpcode(dpsR[i].getData())==ACKopcode){
                     short packet;
                     try {
                         packet = readACKPacket(dpsR[i].getData());
-                        acks[packet]=true;
+                        acks[packet]=true; //Registado a confirmação de receção
 
                     }catch (IntegrityException e) {
                         continue;
                     }
                 }
             }
-            // 4º Ajustar Window // Implementar max tries
+
+            // 4º Ajustar Window de forma a que o index 0 possua um pacote que ainda não foi enviado (shifts sucessivos)
             int before = indexAcked;
 
             //Codigo para dar shift ao array
@@ -514,14 +521,16 @@ public class FTrapid {
                     frame[windowSize-1]= nextPacket;
                     nextPacket++;
                 }
-                else frame[windowSize-1]= -1;
-
+                else frame[windowSize-1]= -1; //Quando chegar já não existirem mais pacotes para serem enviados
                 indexAcked++;
             }
+
+            // Se o array não se moveu: Tenta outra vez, até um maximo de (maxTries) tentativas
             if (before == indexAcked) tries++;
             else tries=0;
+            if (tries == maxTries) throw new MaxTimeoutsReached("Max tries reached");
 
-            if (tries == maxTries) throw new IOException("Maximo de Tentativas");
+            // Final do ciclo: Quando todos os ACKs foram recebidos
             if (indexAcked == packetsData.length) flag=false;
         }
 
@@ -529,52 +538,52 @@ public class FTrapid {
     }
 
 
-    public byte[] receiveData() throws IOException {
+    /*
+     *   Método para a Receção de pacotes de dados seguindo o método: Sliding Window: Selective Repeat
+     *
+     */
+
+
+    public byte[] receiveData() throws IOException, MaxTimeoutsReached {
         dS.setSoTimeout(MAXTIMEOUT);
-
-        short lastblock=0;
-        boolean flag = true;
-        boolean lastflag = false;
         int tries=0;
-        int maxTries=20;
+        int maxTries=10;
 
-        //1º Definição do Window Size = 4 para ja, de forma a testar
+        short lastblock=0; //Tamanho do ultimo bloco
 
+        boolean flag = true;    // Flag que sinaliza o final da Transferência
+
+        boolean lastflag = false; // Flag que sinaliza a receção do ultimo pacote de dados
+
+        boolean flag2=false; //Flag que sinaliza que todos os pacotes já foram recebidos
+                            // mas ainda existem pacotes a serem recebidos (ACKs não chegaram ao outro lado)
+
+        int counter;
+        DatagramPacket[] dpsR;
+        DataPackageInfo[] infos = new DataPackageInfo[MAXDATAPACKETSNUMBER];
+
+        // 1º Definição da Window
+        int[] frame = new int[windowSize];
+        for (int i =0; i<windowSize;i++) frame[i]=i;
         int nextPacket = windowSize;
 
-        //Preciso de uma maneira de saber quais os pacotes que estou a espera de receber
-
-        int[] frame = new int[windowSize];
-
-        // Codigo para gerar Window
-        for (int i =0; i<windowSize;i++) frame[i]=i;
-
+        // 2º Definição da Window de ACks
         boolean[] received = new boolean[windowSize];
         Arrays.fill(received,false);
 
-        boolean flag4=false;
-        int counter =0;
-        DatagramPacket[] dpsR;
-        DataPackageInfo[] infos = new DataPackageInfo[MAXDATAPACKETSNUMBER]; //podia ser um byte array
 
-        //ArrayList<DataPackageInfo> info = new ArrayList<>();
-
-        //TreeSet<DataPackageInfo> info = new TreeSet<>(Comparator.comparingInt(DataPackageInfo::getNrBloco)); //TODO: trocar para array
-
-        //Começar ciclo
+        //3º Começar ciclo
         while(flag){
+            int fator =10; //Fator de multiplicação para apanhar todos os duplicados
+            dpsR = new DatagramPacket[windowSize*fator];
 
-            int fator =10;
-            if (lastflag) fator = 1;
-            //1º Dar receive aos dados
-            dpsR = new DatagramPacket[windowSize*fator]; //TODO: Duplicados
+            // Ciclo que "limpa" todos os pacotes recebidos do receiver buffer
             counter=0;
-
             for (;counter<windowSize*fator;counter++){
                 try {
-                    if (counter == 1) dS.setSoTimeout(MAXTIMEOUTDUP);
+                    if (counter == 1) dS.setSoTimeout(MAXTIMEOUTDUP);//Após receber o 1º pacote o timeout é
+                                                                    // reduzido de forma a apanhar os restantes pacotes
                     dpsR[counter] = new DatagramPacket(new byte[MAXDATASIZE],MAXDATASIZE);
-
                     dS.receive(dpsR[counter]);
 
                 }catch (SocketTimeoutException e){
@@ -583,55 +592,63 @@ public class FTrapid {
             }
             dS.setSoTimeout(MAXTIMEOUT);
 
-            //2º Analisar packets recebidos e enviar acks
+            // Analisar packets recebidos e enviar acks
+            int counter2 =counter; //copia do contador // counter irá ser o contador dos pacotes de dados recebidos
 
-            for (int i=0; i<counter; i++){
+            for (int i=0; i<counter2; i++){
                 if (getOpcode(dpsR[i].getData())==DATAopcode){
                     try {
                         DataPackageInfo di =readDataPacket(dpsR[i].getData());
 
-                        //verificar se o bloco recebido esta no frame
+                        //Verifca se o pacote está no frame
                         int ind =0;
                         for(; ind<windowSize && di.getNrBloco() != frame[ind]; ind++);
-                        if (di.getNrBloco()<frame[0] || flag4 ) {
+
+
+                        if (di.getNrBloco()<frame[0] || flag2 )  // Se o nº do bloco ja foi recebido ou se todos os pacotes
+                                                                 // já foram recebidos (sinalizado pela flag2) reenvia o ACK
+                        {
                             DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, externalIP, externalPort);
                             dS.send(dPout);
-
-
                         }
+
                         else if (ind < windowSize){
-                            if (!received[ind]) infos[di.getNrBloco()]=di;  //info.add(di.getNrBloco(),di);
-                            received[ind]=true;
+                            if (!received[ind]) infos[di.getNrBloco()]=di;  //Guarda a informação a cerca do pacotes
+                            received[ind]=true; //Marca a informação como recebida
 
                             DatagramPacket dPout = new DatagramPacket(createACKPackage(di.getNrBloco()), MAXACKSIZE, externalIP, externalPort);
-
                             dS.send(dPout);
 
-
-
-                            if (di.getData().length < MAXDATA) {
+                            if (di.getData().length < MAXDATA) {  //Se o pacote de dados recebido tiver um tamanho menor que o maximo
+                                                                 // sinaliza o ultimo pacote
                                 lastflag=true;
                                 lastblock = (short) di.getData().length;
                                 for(int i2=ind+1; i2<windowSize; i2++) frame[i2] = -1;
                             }
                         }
                     } catch (IntegrityException e) {
-                        System.out.println("Integrity/Opcode receiveData");
-                        counter--;
+
+                        counter--; //Se não for um pacote de dados
                         continue;
                     }
 
                 }  else {
-                    //System.out.println("Opcode estrangeiro sendData: " + getOpcode(dpsR[i].getData()));
-                    counter--;
+
+                    counter--; //Se não for um pacote de dados
+
                 }
 
             }
 
-            // 3º organizar frames
-            int moved=0;
+            // Organizar os frames
+            int moved=0; //Inteiro que marca se existiu movimento nos frames
+
             for (int i=0; received[i];moved++){
-                for (int i2 =0; i2<windowSize-1;i2++) {frame[i2] = frame[i2+1]; received[i2]=received[i2+1];}
+                //Shift em ambos os arrays
+                for (int i2 =0; i2<windowSize-1;i2++) {
+                    frame[i2] = frame[i2+1];
+                    received[i2]=received[i2+1];
+                }
                 received[windowSize-1] = false;
                 if (!lastflag && nextPacket<(MAXDATAPACKETSNUMBER)) {
                     frame[windowSize-1]= nextPacket;
@@ -643,21 +660,22 @@ public class FTrapid {
                 }
 
             }
-            // Reconhecer que n avançou
+            // Reconhecer que n avançou e não recebeu mais nenhum pacote de dados
             if (counter== 0 && moved == 0) tries++; else tries=0;
+
             if ( counter== 0 && tries==maxTries) {
-                System.out.println("Frame : "+ Arrays.toString(frame));
-                System.out.println("ACKS : " + Arrays.toString(received));
-                throw new IOException("Timeouts Excedidos");
+                throw new MaxTimeoutsReached("Max Tries Reached");
             }
 
 
-            //confirmar que todos foram enviados
+            //Confirmar que todos os pacotes foram enviados
             int confirmEnd=0;
-            for(;lastflag && confirmEnd< windowSize &&frame[confirmEnd]==-1;confirmEnd++);
+            for(;lastflag && confirmEnd< windowSize && frame[confirmEnd]==-1;confirmEnd++);
             if (lastflag && confirmEnd== windowSize && counter==0) flag = false;
-            if (lastflag && confirmEnd== windowSize) flag4=true;
+            if (lastflag && confirmEnd== windowSize) flag2=true;
         }
+
+        // 4º Concatenar todos os dados recebidos
         int tamnh;
         for (tamnh=0;tamnh<MAXDATAPACKETSNUMBER && infos[tamnh]!=null;tamnh++);
 
@@ -669,6 +687,10 @@ public class FTrapid {
 
     }
 
+    /*
+    *   ---------> Stop and Wait Approach  <---------------
+    *
+    *  Discontinued after performance tests
 
 
 
@@ -794,10 +816,14 @@ public class FTrapid {
         }
 
     }
+    */
+
 
 
     ////////Methods for main Port////////////
 
+
+    // Método que implementa a autenticação
     public int authentication(String password) throws  Exception{
         byte[] autP = createAUTPackage(password);
         DatagramPacket dOUT = new DatagramPacket(autP,autP.length, externalIP, externalPort);
@@ -824,44 +850,43 @@ public class FTrapid {
         return ret;
     }
 
-
+    // Metodo para enviar um Request
     //Mode:
     // - 1 to Read Request
     // - 2 to Write Request
-    public void requestRRWR(String filename,short port,short mode,long data) throws OpcodeNotRecognizedException, IOException {
+    public void requestRRWR(String filename,short port,short mode,long data) throws Exception {
         byte[] request;
         if (mode == 1) request = createRDWRPackage(filename,RDopcode,port,data);
         else if (mode == 2) request = createRDWRPackage(filename,WRopcode,port,data);
-        else throw new OpcodeNotRecognizedException();
+        else throw new Exception("Mode not recognized");
         dS.send(new DatagramPacket(request, request.length,externalIP, externalPort));
     }
 
-    /*
-     * Retorna um pacote de informaçao, pode vir a nulo
-     */
+   //Metodo para analisar um request
     public RequestPackageInfo analyseRequest(DatagramPacket dp) throws IntegrityException {
         return readRDWRPacket(dp.getData());
     }
 
-    public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException,OpcodeNotRecognizedException {return readERRSYNPacket(dp.getData());}
+    // Metodo para analisar a resposta a um request
+    public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException {return readERRSYNPacket(dp.getData());}
 
-    public void answer(short mode,short msg,String filename) throws OpcodeNotRecognizedException,IOException {
+    // Metodo para enviar uma resposta ao requester (quer um SYN, quer um Erro)
+    public void answer(short mode,short msg,String filename) throws Exception {
         // mode is 1 for error msg or 2 for syn
         // msg is either an error code or a port number
         byte[] packet;
         if (mode == 1) packet= createERRORPackage(msg,filename);
         else if (mode ==2) packet = createSYNPackage(msg,filename);
-        else throw new OpcodeNotRecognizedException();
+        else throw new Exception("Mode not recognized");
         dS.send(new DatagramPacket(packet,packet.length, externalIP, externalPort));
     }
 
-    /*
-     *
-     */
+    // Retorna o opcode de um pacote
     public short getOpcode(byte[] data){
         return data[0];
     }
 
+    // Retorna uma tradução do erro
     public static String translateError(short error){
         if (error == 400) return "Connection Error";
         else if (error == 401) return "Aplication Error";

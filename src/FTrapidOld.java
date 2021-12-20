@@ -5,8 +5,6 @@ import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
 
 public class FTrapidOld {
 
@@ -349,7 +347,7 @@ public class FTrapidOld {
      *
      */
 
-    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException, OpcodeNotRecognizedException {
+    private ErrorSynPackageInfo readERRSYNPacket(byte[] packet) throws IntegrityException{
         ByteBuffer out = ByteBuffer.allocate(packet.length);
         ErrorSynPackageInfo ret;
         out.put(packet);
@@ -372,7 +370,7 @@ public class FTrapidOld {
             if (generatedHash !=hash) throw new IntegrityException();
 
             ret= new ErrorSynPackageInfo(msg,filename);
-        }else throw new OpcodeNotRecognizedException();
+        }else throw new IntegrityException();
         return ret;
     }
 
@@ -565,11 +563,11 @@ public class FTrapidOld {
     //Mode:
     // - 1 to Read Request
     // - 2 to Write Request
-    public void requestRRWR(String filename,short port,short mode,long data) throws OpcodeNotRecognizedException, IOException {
+    public void requestRRWR(String filename,short port,short mode,long data) throws Exception {
         byte[] request;
         if (mode == 1) request = createRDWRPackage(filename,RDopcode,port,data);
         else if (mode == 2) request = createRDWRPackage(filename,WRopcode,port,data);
-        else throw new OpcodeNotRecognizedException();
+        else throw new Exception("Mode not recognized");
         dS.send(new DatagramPacket(request, request.length, InetAddress.getByName(externalIP), externalPort));
     }
 
@@ -580,15 +578,15 @@ public class FTrapidOld {
       return readRDWRPacket(dp.getData());
    }
 
-   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException,OpcodeNotRecognizedException {return readERRSYNPacket(dp.getData());}
+   public ErrorSynPackageInfo analyseAnswer(DatagramPacket dp) throws IntegrityException, MaxTimeoutsReached {return readERRSYNPacket(dp.getData());}
 
-    public void answer(short mode,short msg,String filename) throws OpcodeNotRecognizedException,IOException {
+    public void answer(short mode,short msg,String filename) throws Exception {
        // mode is 1 for error msg or 2 for syn
        // msg is either an error code or a port number
        byte[] packet;
        if (mode == 1) packet= createERRORPackage(msg,filename);
        else if (mode ==2) packet = createSYNPackage(msg,filename);
-       else throw new OpcodeNotRecognizedException();
+       else throw new Exception("Mode not recognized");
        dS.send(new DatagramPacket(packet,packet.length, InetAddress.getByName(externalIP), externalPort));
    }
 

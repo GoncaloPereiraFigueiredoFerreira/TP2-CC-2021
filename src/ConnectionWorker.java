@@ -1,8 +1,5 @@
 import java.io.IOException;
 import java.net.*;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class ConnectionWorker extends Thread {
     private final int TIMEOUT = 2500;
@@ -111,7 +108,7 @@ public class ConnectionWorker extends Thread {
             } else if (errorCode == 402) {
 
             }
-        } catch (IntegrityException | OpcodeNotRecognizedException e) {}
+        } catch (IntegrityException e) {}
         //OpcodeNotRecognizedException doesn't happen in here. Checked in the caller function
     }
 }
