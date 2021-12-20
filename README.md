@@ -19,7 +19,11 @@ Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
 
 
 Realizado por:
+
 PL6 - Grupo 4
+
   Alexandre Martins (A93315)
+
   Diogo Rebelo (A93180)
+
   Gonçalo Ferreira (A93218)
