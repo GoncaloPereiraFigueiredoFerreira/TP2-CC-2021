@@ -14,7 +14,7 @@ Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
 ``` 
 
 ```
-  java FFSync
+  java FFSync <pasta partilhada> <ip externo>
 ``` 
 
 
