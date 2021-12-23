@@ -8,12 +8,7 @@ Para utilizar o programa deverá ser utilizado o comando:
 ```
   java -jar TP2-CC-2021.jar <pasta partilhada> <ip externo> <nº threads maximo> <window size>
 ```  
-
-Nota: <nº threads maximo> e <window size> são opcionais sendo que:
-      
-  -nº de thread default = 30
-      
-  -window size defaul = 25
+Nota: o campo <nº threads maximo> e <window size> são campos opcionais, sendo que os valores default são: threads = 30 e window size = 25.
 
 
 Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
