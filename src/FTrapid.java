@@ -44,7 +44,7 @@ public class FTrapid {
 
     private final int windowSize;
     private final int MAXTIMEOUT = 60;
-    private final int MAXTIMEOUTDUP = 3;
+    private final int MAXTIMEOUTDUP = 5;
 
 
     public FTrapid(DatagramSocket ds, InetAddress externalIP, short externalPort, Integer wSize){
