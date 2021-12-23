@@ -4,8 +4,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import static java.lang.Thread.sleep;
 
-//TODO: Receive com número superior ao n de threads n está a funcionar
-
 public class FFSync {
     private static int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
 
@@ -15,6 +13,7 @@ public class FFSync {
     public static void main(String[] args) {
         if(args[0].equals("--help")) {
             System.out.println("To use the application, your command should look like the one below:\n-> \"java FFSync <folder to be shared> <external ip> [-t <max number of threads>] [-w <window size>]\"");
+            System.out.println("*IMPORTANT NOTE* It's mandatory that WINDOW SIZE is EQUAL in booth computers. If it's not, the program might be unstable");
             return;
         }
         else if(args.length < 2 || args.length > 6 || args.length % 2 != 0) {
@@ -176,7 +175,6 @@ public class FFSync {
             //Gets local usable port for a new transfer worker
             datagramSocket = createDatagramSocket();
             while (datagramSocket == null) {
-                //TODO: Unlikely to happen, but check how the time of sleep influences the rest
                 //Sleeps 1 second and tries to get a valid socket again
                 try {
                     sleep(25);

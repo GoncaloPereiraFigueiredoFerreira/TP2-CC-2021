@@ -124,6 +124,7 @@ public class FTrapid {
         //    we need another package with length lower than MAXDATA
         // 2) If the rest of the division is different than 1, the value will be rounded down,
         //    giving the number of packets lower by 1 unit
+        // Ass: ASM
         if(numberPackts != MAXDATAPACKETSNUMBER) numberPackts++;
 
         byte[][] packets = new byte[numberPackts][];
