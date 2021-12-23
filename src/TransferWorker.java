@@ -13,6 +13,7 @@ public class TransferWorker extends Thread{
     private final boolean requester; //true if it made the request
     private final boolean receiver;  //true if is reading(receiving) a file
     private final String filename;   //path to the file wished to be read/written within the shared folder
+    private Long lastModified;
     private final DatagramSocket ds;
     private final FTrapid ftr;
     private final SharedInfo si;
@@ -23,14 +24,15 @@ public class TransferWorker extends Thread{
     private Long transferStartTime = null;
     private Double transferTime    = null;
 
-    public TransferWorker(boolean requester, boolean receiver, String filename, DatagramSocket ds, short externalPort, SharedInfo si){
-        this.state      = TWState.NEW;
-        this.requester  = requester;
-        this.receiver   = receiver;
-        this.filename   = filename;
-        this.ds         = ds;
-        this.ftr        = new FTrapid(ds, si.externalIP, externalPort);
-        this.si         = si;
+    public TransferWorker(boolean requester, boolean receiver, String filename, DatagramSocket ds, short externalPort, SharedInfo si, Long lastModified){
+        this.state        = TWState.NEW;
+        this.requester    = requester;
+        this.receiver     = receiver;
+        this.filename     = filename;
+        this.ds           = ds;
+        this.ftr          = new FTrapid(ds, si.externalIP, externalPort);
+        this.si           = si;
+        this.lastModified = lastModified;
     }
 
     /* ******** Main Methods ******** */
@@ -88,6 +90,7 @@ public class TransferWorker extends Thread{
             String filepath = FilesHandler.filePathgenerator(si.folderPath, filename,false);
             file = new File(filepath);
             fips = new FileInputStream(file);
+            lastModified = file.lastModified();
         } catch (FileNotFoundException fnfe) {
             state = TWState.ERROROCURRED;
             si.writeToLogFile("SEND FILE (ERROR): Could not find file(" + filename +"): "+ fnfe.getMessage() );
@@ -105,7 +108,7 @@ public class TransferWorker extends Thread{
             while (keepSendingRequest) {
                 try {
                     si.sendRequestsLock.lock();
-                    ftr.requestRRWR(filename, (short) ds.getLocalPort(), (short) 2, 0);
+                    ftr.requestRRWR(filename, (short) ds.getLocalPort(), (short) 2, lastModified);
                     si.writeToLogFile("REQUEST: Sent Write Request (" + filename +")!");
                 }
                 catch (Exception ignored) {}
@@ -254,6 +257,7 @@ public class TransferWorker extends Thread{
         transferTime =  ((double) (System.nanoTime() - transferStartTime) / (double) 1000000000);
         si.writeToLogFile("RECEIVE FILE: " + filename + " received! | Transfer Time: " + String.format("%.4f",transferTime) + " seconds | Average Transfer Speed: " + String.format("%.4f", (new File(filepath).length()) / transferTime * 8) + " bits/sec");
         try { fops.close(); } catch (IOException ignored) {}
+        if(!new File(filepath).setLastModified(lastModified)) si.writeToLogFile("RECEIVE FILE (MINOR ERROR) : Could not change the \"Last modified\" variable of the file!");
         cond = si.receiveRequestsCond;
         lock = si.receiveRequestsLock;
     }

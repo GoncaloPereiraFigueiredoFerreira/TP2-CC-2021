@@ -135,7 +135,7 @@ public class FFSync {
         for (Map.Entry<String, Long> entry : filesInDirReceived.entrySet()) {
             filename = entry.getKey();
             //Checks for the existence of the file. If the file exists, compares the dates when they were last modified.
-            if (filesInDir.containsKey(filename) && filesInDir.get(filename) < entry.getValue())
+            if (filesInDir.containsKey(filename) && filesInDir.get(filename) <= entry.getValue())
                 filesInDir.remove(filename);
         }
 
@@ -173,7 +173,7 @@ public class FFSync {
             finally { si.sendRequestsLock.unlock(); }
 
             //Creates a Transfer Worker. This worker is responsible for sending the file to the other client, after performing a request to the other client, and receiving confirmation(SYN).
-            TransferWorker tw = new TransferWorker(true, false, filename, datagramSocket, (short) si.requestsPort, si);
+            TransferWorker tw = new TransferWorker(true, false, filename, datagramSocket, (short) si.requestsPort, si, null);
             tw.start();
             si.status.addRequestSent(filename, tw);
         }

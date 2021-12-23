@@ -79,12 +79,13 @@ public class ConnectionWorker extends Thread {
         try {
             rpi = ftr.analyseRequest(dp);
             String filename = rpi.getFilename();
+            long lastModified = rpi.getData();
 
             //New Request. The file is not being received nor was it received.
             //Ignores duplicates. Expects resends from the receiver (TransferWorker) created.
             if (!si.status.wasRequestReceived(filename)) {
                 dsTransferWorker = FFSync.createDatagramSocket();
-                TransferWorker tw = new TransferWorker(false, true, filename, dsTransferWorker, rpi.getPort(), si);
+                TransferWorker tw = new TransferWorker(false, true, filename, dsTransferWorker, rpi.getPort(), si, lastModified);
                 tw.start();
                 si.incReceiversCount();
                 si.status.addRequestReceived(filename,tw);
