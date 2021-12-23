@@ -6,6 +6,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class SharedInfo {
+    public final Integer windowSize;
     public final Status status; //stores the state of the transfers
     public final String folderPath; //path to the shared folder
     public final InetAddress externalIP; //ip adress of the client in the other end
@@ -20,7 +21,8 @@ public class SharedInfo {
     private int sendersCount   = 0;
     private int receiversCount = 0;
 
-    public SharedInfo(String folderPath, InetAddress externalIP, int requestsPort, Collection<String> filesToBeSent, PrintWriter pw) {
+    public SharedInfo(String folderPath, InetAddress externalIP, int requestsPort, Collection<String> filesToBeSent, PrintWriter pw, Integer windowSize) {
+        this.windowSize   = windowSize;
         this.status       = new Status(filesToBeSent);
         this.folderPath   = folderPath;
         this.requestsPort = requestsPort;

@@ -30,7 +30,7 @@ public class TransferWorker extends Thread{
         this.receiver     = receiver;
         this.filename     = filename;
         this.ds           = ds;
-        this.ftr          = new FTrapid(ds, si.externalIP, externalPort);
+        this.ftr          = new FTrapid(ds, si.externalIP, externalPort, si.windowSize);
         this.si           = si;
         this.lastModified = lastModified;
     }

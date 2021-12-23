@@ -8,6 +8,7 @@ import static java.lang.Thread.sleep;
 
 public class FFSync {
     private static int MAXTHREADSNUMBERPERFUNCTION = 30; //if MAXTHREADSNUMBERPERFUNCTION = 10, then 10 threads can send files, and another 10 threads can receive files
+
     private static final int REQUESTSPORT = 9999;
     private static PrintWriter pw;
 
@@ -18,14 +19,29 @@ public class FFSync {
         Map<String,Long> filesInDir;
         DatagramSocket ds;
 
-        //Sets the maximum number of threads per function(sending/receiving)
-        try {
-            if(args.length == 3) {
-                int nrThreads = Integer.parseInt(args[2]);
-                if(nrThreads > 0) MAXTHREADSNUMBERPERFUNCTION = nrThreads;
-            }
-        } catch (NumberFormatException ignored) {}
 
+        //Sets the maximum number of threads per function(sending/receiving) and/or the window size
+        Integer windowSize = null;
+        try {
+
+            if(args.length > 2 && args.length <= 6 && args.length % 2 == 0 ){
+
+                for(int i = 1 ; i < (args.length / 2) ; i++){
+
+                    if("-t".equals(args[2*i])) {
+                        int nrThreads = Integer.parseInt(args[2*i + 1]);
+                        if(nrThreads > 0) MAXTHREADSNUMBERPERFUNCTION = nrThreads;
+                    }
+                    else if("-w".equals(args[2*i])){
+                        windowSize = Integer.parseInt(args[2*i + 1]);
+                        if(windowSize <= 0) windowSize = null;
+                    }
+
+                }
+
+            }
+
+        } catch (NumberFormatException ignored) {}
 
         //Creates logging file
         try { pw = new PrintWriter("log.txt"); }
@@ -56,7 +72,7 @@ public class FFSync {
 
 
         //Authentication Block
-        FTrapid ftr = new FTrapid(ds, externalIP, (short)REQUESTSPORT);
+        FTrapid ftr = new FTrapid(ds, externalIP, (short)REQUESTSPORT, windowSize);
         Scanner sc  = new Scanner(System.in);
         System.out.print("Introduza a sua password, em ambas as maquinas: ");
         String pass = sc.next(); sc.close();
@@ -78,7 +94,7 @@ public class FFSync {
         String localIP = FFSync.getLocalIP(externalIP);
         filesInDir = getFilesToBeSent(ftr, localIP, args[1], folderPath);
         if(filesInDir == null) return;
-        si = new SharedInfo(folderPath, externalIP, REQUESTSPORT, filesInDir.keySet(), pw);
+        si = new SharedInfo(folderPath, externalIP, REQUESTSPORT, filesInDir.keySet(), pw, windowSize);
 
         //Starts the worker responsible for answering the http requests
         HTTPRequestsAnswerer httpSv = new HTTPRequestsAnswerer(localIP, si);
