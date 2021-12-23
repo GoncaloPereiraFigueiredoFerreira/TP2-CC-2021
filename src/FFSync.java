@@ -13,6 +13,15 @@ public class FFSync {
     private static PrintWriter pw;
 
     public static void main(String[] args) {
+        if(args[0].equals("--help")) {
+            System.out.println("To use the application, your command should look like the one below:\n-> \"java FFSync <folder to be shared> <external ip> [-t <max number of threads>] [-w <window size>]\"");
+            return;
+        }
+        else if(args.length < 2) {
+            System.out.println("Use the option \"--help\" for better understanding on how to use the application.");
+            return;
+        }
+
         String folderPath = args[0]; //Tem de acabar com a barra "/" no Linux ou com a barra "\" se for no Windows
         InetAddress externalIP;
         SharedInfo si;
