@@ -6,7 +6,7 @@ Projeto realizado no ambito da UC de Comunicações por Computadores, no curso L
 Para utilizar o programa deverá ser utilizado o comando:
 
 ```
-  java -jar TP2-CC-2021.jar <pasta partilhada> <ip externo> <nº threads maximo> <window size>
+  java -jar TP2-CC-2021.jar <pasta partilhada> <ip externo> [-t <nº threads maximo>] [-w <window size>]
 ```  
 Nota: o campo "nº threads maximo" e "window size" são campos opcionais, sendo que os valores default são: threads = 30 e window size = 25.
 
