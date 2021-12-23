@@ -17,7 +17,7 @@ Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
 ``` 
 
 ```
-  java FFSync <pasta partilhada> <ip externo> <nº threads maximo> <window size>
+  java FFSync <pasta partilhada> <ip externo> [-t <nº threads maximo>] [-w <window size>]
 ``` 
 
 
