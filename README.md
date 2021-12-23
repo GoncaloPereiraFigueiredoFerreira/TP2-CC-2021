@@ -10,8 +10,11 @@ Para utilizar o programa deverá ser utilizado o comando:
 ```  
 
 Nota: <nº threads maximo> e <window size> são opcionais sendo que:
-      -nº de thread default = 30
-      -window size defaul = 25
+      
+  -nº de thread default = 30
+      
+  -window size defaul = 25
+
 
 Para voltar a compilar o projeto deverá utilizar a versão 11 do Java.
 ```
