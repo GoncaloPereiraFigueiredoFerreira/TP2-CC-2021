@@ -42,13 +42,17 @@ public class FTrapid {
     public static final int MAXDATAPACKETSNUMBER = 32768;
 
 
-    private final int windowSize = 25;
+    private final int windowSize;
     private final int MAXTIMEOUT = 60;
-    private final int MAXTIMEOUTDUP = 5;
+    private final int MAXTIMEOUTDUP = 3;
 
 
-    public FTrapid(DatagramSocket ds, InetAddress externalIP, short externalPort){
-        this.dS = ds;this.externalIP = externalIP; this.externalPort=externalPort;
+    public FTrapid(DatagramSocket ds, InetAddress externalIP, short externalPort, Integer wSize){
+        this.dS = ds;
+        this.externalIP = externalIP;
+        this.externalPort=externalPort;
+        if (wSize != null) this.windowSize = wSize;
+        else this.windowSize=25;
     }
     //DatagraSocket Sender Size =  65535 B ≃ 64KB
     //DatagraSocket Receiver Size = 2147483647 B ≃ 2.00 GB
