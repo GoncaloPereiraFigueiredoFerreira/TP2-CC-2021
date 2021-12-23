@@ -17,7 +17,7 @@ public class FFSync {
             System.out.println("To use the application, your command should look like the one below:\n-> \"java FFSync <folder to be shared> <external ip> [-t <max number of threads>] [-w <window size>]\"");
             return;
         }
-        else if(args.length < 2) {
+        else if(args.length < 2 || args.length > 6 || args.length % 2 != 0) {
             System.out.println("Use the option \"--help\" for better understanding on how to use the application.");
             return;
         }
@@ -33,7 +33,7 @@ public class FFSync {
         Integer windowSize = null;
         try {
 
-            if(args.length > 2 && args.length <= 6 && args.length % 2 == 0 ){
+            if(args.length > 2){
 
                 for(int i = 1 ; i < (args.length / 2) ; i++){
 
