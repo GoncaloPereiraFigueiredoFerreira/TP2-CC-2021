@@ -1,6 +1,6 @@
 # CC-2021
 
-Projeto realizado no ambito da UC de Comunicações por Computadores, no curso Licenciatura em Engenharia Informática em Universidade do Minho.
+Projeto realizado no ambito da UC de Comunicações por Computadores, no curso Licenciatura em Engenharia Informática em Universidade do Minho. Neste projeto foi desenvolvida uma ferramenta de transferência de conjuntos de ficheiros (em redes locais), que envolveu o desenho de um protocolo de raiz. 
   
 Grade: 16/20
 
