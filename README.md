@@ -2,6 +2,7 @@
 
 Projeto realizado no ambito da UC de Comunicações por Computadores, no curso Licenciatura em Engenharia Informática em Universidade do Minho.
   
+Grade: 16/20
 
 Para utilizar o programa deverá ser utilizado o comando:
 
